@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>بَصير</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box;
+      -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
+  html,body { height:100%; }
+  body { background:#fbfbfd; color:#1d1d1f; overflow:hidden;
+         font-family:-apple-system,"SF Arabic",system-ui,sans-serif;
+         display:flex; align-items:center; justify-content:center; }
+  #stage { position:fixed; inset:0; cursor:pointer; touch-action:none; }
+  #hint  { position:absolute; top:50%; left:0; right:0; transform:translateY(-50%);
+           text-align:center; font-size:1.4rem; color:#86868b; padding:0 28px; transition:opacity .3s; pointer-events:none; }
+  #status{ position:absolute; bottom:13%; left:0; right:0; text-align:center;
+           font-size:1.2rem; min-height:1.6em; padding:0 24px; pointer-events:none; }
+  .ripple { position:absolute; border-radius:50%; pointer-events:none; transform:translate(-50%,-50%) scale(0); }
+  @keyframes rip { to { transform:translate(-50%,-50%) scale(9); opacity:0; } }
+  #orb { position:absolute; top:50%; left:50%; width:18px; height:18px; border-radius:50%;
+         transform:translate(-50%,-50%); background:#0a84ff; opacity:0; transition:opacity .3s; pointer-events:none; }
+  .listening #orb { opacity:1; animation:pulse 1.3s ease-out infinite; }
+  .busy #orb { opacity:1; background:#ff9f0a; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(10,132,255,.45);} 100%{box-shadow:0 0 0 70px rgba(10,132,255,0);} }
+</style>
+</head>
+<body>
+  <div id="stage" role="application" aria-label="بَصير، مساعد صوتي">
+    <div id="orb"></div>
+    <!-- Screen readers (VoiceOver/TalkBack) read this aloud on load — no touch needed -->
+    <h1 id="hint" role="status" aria-live="assertive" tabindex="0">
+      أهلاً بك في بَصير، مساعدك الصوتي. النظام جاهز. لطلب غرض، المس الشاشة مع الاستمرار، قل ما تريد، ثم ارفع إصبعك.
+    </h1>
+    <div id="status" role="status" aria-live="polite"></div>
+  </div>
+<script>
+const stage=document.getElementById('stage'), hint=document.getElementById('hint'), statusEl=document.getElementById('status');
+const WELCOME="أهلاً بك في بَصير، مساعدك الصوتي. النظام جاهز. لطلب غرض، المس الشاشة مع الاستمرار، قل ما تريد، ثم ارفع إصبعك.";
+const ACK="تم استلام الأمر، قيد التنفيذ";
+let stream=null, mr=null, chunks=[], state='idle', welcomeDone=false, pressTs=0;
+
+function setStatus(t,c){ statusEl.textContent=t||""; statusEl.style.color=c||"#1d1d1f"; }
+function ttsUrl(t){ return '/tts?text='+encodeURIComponent(t); }
+function ripple(x,y,color){
+  const r=document.createElement('div'); r.className='ripple';
+  r.style.left=x+'px'; r.style.top=y+'px'; r.style.width=r.style.height='40px';
+  r.style.background=color; r.style.animation='rip .8s ease-out forwards';
+  stage.appendChild(r); setTimeout(()=>r.remove(),800);
+}
+// Speak via Aura TTS; if it fails (rate limit / error), fall back to the browser voice.
+function browserSay(text, done){
+  try{
+    const u=new SpeechSynthesisUtterance(text); u.lang='ar-SA';
+    const v=speechSynthesis.getVoices().find(x=>x.lang&&x.lang.toLowerCase().startsWith('ar'));
+    if(v) u.voice=v; u.onend=done; u.onerror=done;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  }catch(e){ done&&done(); }
+}
+function speak(text){
+  return new Promise(res=>{
+    let done=false; const fin=()=>{ if(!done){done=true; res();} };
+    const a=new Audio(ttsUrl(text));
+    a.onended=fin;
+    a.onerror=()=>browserSay(text, fin);
+    a.play().then(()=>{}).catch(()=>browserSay(text, fin));
+  });
+}
+
+// Try to greet on load. Mobile blocks autoplay, so first touch will greet instead.
+// Just nudge the screen reader; don't call Aura on load (saves quota, avoids 429 spam).
+window.addEventListener('load', ()=>{ hint.focus(); });
+
+async function getStream(){ if(!stream){ stream=await navigator.mediaDevices.getUserMedia({audio:true}); } return stream; }
+
+async function startListening(){
+  try{ await getStream(); }
+  catch(e){ setStatus("لا يمكن الوصول إلى الميكروفون (يتطلب https على الجوال).","#ff3b30"); return; }
+  chunks=[]; mr=new MediaRecorder(stream);
+  mr.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
+  mr.onstop=onRecorded;
+  mr.start(); state='listening'; stage.className='listening';
+  setStatus("أتحدّث الآن… ارفع إصبعك للإرسال","#0a84ff");
+}
+
+async function onRecorded(){
+  // ignore accidental quick taps
+  if(Date.now()-pressTs < 350 || !chunks.length){
+    state='idle'; stage.className=''; setStatus("لم أسمع شيئًا، حاول مرة أخرى.","#ff9f0a"); return;
+  }
+  state='busy'; stage.className='busy'; setStatus("جارٍ المعالجة…","#86868b");
+  const blob=new Blob(chunks,{type:(mr&&mr.mimeType)||'audio/webm'});
+  browserSay(ACK);                                       // ack via phone voice (no Aura quota)
+  try{
+    const fd=new FormData(); fd.append('file', blob, 'command.webm');
+    const r=await fetch('/command-audio',{method:'POST',body:fd});
+    const data=await r.json();
+    if(data.error){ setStatus("خطأ: "+data.error,"#ff3b30"); browserSay("عذراً، صار خطأ"); }
+    else { setStatus("سمعتك: "+data.heard+"  —  "+data.reply,"#1d1d1f"); await speak(data.reply); }
+  }catch(e){ setStatus("تعذّر الاتصال بالخادم.","#ff3b30"); }
+  state='idle'; stage.className='';
+}
+
+stage.addEventListener('pointerdown',(ev)=>{
+  ev.preventDefault(); hint.style.opacity=0;
+  if(state==='busy') return;
+  if(!welcomeDone){                                       // first touch: greet + unlock audio
+    welcomeDone=true; browserSay(WELCOME);               // welcome via phone voice (no Aura quota)
+    ripple(ev.clientX,ev.clientY,'rgba(52,199,89,.18)'); return;
+  }
+  pressTs=Date.now(); ripple(ev.clientX,ev.clientY,'rgba(10,132,255,.18)'); startListening();
+});
+function endHold(){ if(state==='listening'){ try{ mr&&mr.stop(); }catch(e){} } }
+window.addEventListener('pointerup', endHold);
+window.addEventListener('pointercancel', endHold);
+</script>
+</body>
+</html>
