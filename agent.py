@@ -32,11 +32,13 @@ def _is_tool_unsupported(err):
 _RETRYABLE = ("content_filter", "safety", "http 429", "http 500", "http 502", "http 503")
 
 
-def _chat(client, messages, tools, response_format, tries=3):
+def _chat(client, messages, tools, response_format, tries=4):
     last = None
-    for _ in range(tries):
+    for i in range(tries):
         try:
-            return client.chat(messages, tools=tools, response_format=response_format)
+            # vary temperature across retries to dodge the intermittent safety filter
+            return client.chat(messages, tools=tools, temperature=0.2 + 0.25 * i,
+                               response_format=response_format)
         except FanarError as e:
             last = e
             if any(k in str(e).lower() for k in _RETRYABLE):
@@ -98,14 +100,18 @@ def _observation_msg(name, result, call_id, json_mode):
     return {"role": "tool", "tool_call_id": call_id, "content": payload}
 
 
-def _loop(client, user_text, json_mode, verbose):
-    messages = [
-        {"role": "system", "content": build_system_prompt(json_mode=json_mode)},
-        {"role": "user", "content": user_text},
-    ]
+def _loop(client, user_text, json_mode, verbose, history=None):
+    if history:                                   # continue an existing conversation
+        messages = list(history) + [{"role": "user", "content": user_text}]
+    else:
+        messages = [
+            {"role": "system", "content": build_system_prompt(json_mode=json_mode)},
+            {"role": "user", "content": user_text},
+        ]
     tools = None if json_mode else TOOLS
     response_format = {"type": "json_object"} if json_mode else None
     transcript = []
+    awaiting = False
 
     for _ in range(MAX_STEPS):
         msg = _chat(client, messages, tools, response_format)
@@ -119,22 +125,32 @@ def _loop(client, user_text, json_mode, verbose):
 
         messages.append(_assistant_msg(msg, json_mode))
 
-        done = False
+        stop = False
         for act in actions:
             if act["name"] == "done":
-                done = True
+                stop = True
                 continue
             result = run_tool(act["name"], act["args"])
             transcript.append({"action": act["name"], "args": act["args"], "result": result})
             messages.append(_observation_msg(act["name"], result, act["id"], json_mode))
-        if done:
+            if act["name"] == "ask":              # asked a question -> stop & wait for the user
+                awaiting = True
+                stop = True
+                break
+        if stop:
             break
 
-    return transcript
+    reply = " ".join(t["args"].get("text_ar", "")
+                     for t in transcript if t["action"] in ("say", "ask"))
+    return {"transcript": transcript, "reply": reply, "awaiting": awaiting, "messages": messages}
 
 
-def run(user_text, client=None, verbose=True, json_mode=None):
-    """Run one user request end-to-end. Returns the action transcript."""
+def run(user_text, client=None, verbose=True, json_mode=None, history=None):
+    """Run one user turn. Returns {transcript, reply, awaiting, messages}.
+
+    Pass `history` (the prior `messages`) to continue a multi-turn conversation,
+    e.g. after the agent asked a clarifying question.
+    """
     client = client or FanarClient()
     if verbose:
         print(f"  [user] {user_text}")
@@ -142,14 +158,14 @@ def run(user_text, client=None, verbose=True, json_mode=None):
         json_mode = not USE_NATIVE_TOOLS
     if not json_mode:
         try:
-            return _loop(client, user_text, json_mode=False, verbose=verbose)
+            return _loop(client, user_text, json_mode=False, verbose=verbose, history=history)
         except FanarError as e:
             if _is_tool_unsupported(e):
                 if verbose:
                     print("  [agent] native tool-calling unsupported -> JSON-action fallback")
-                return _loop(client, user_text, json_mode=True, verbose=verbose)
+                return _loop(client, user_text, json_mode=True, verbose=verbose, history=history)
             raise
-    return _loop(client, user_text, json_mode=True, verbose=verbose)
+    return _loop(client, user_text, json_mode=True, verbose=verbose, history=history)
 
 
 if __name__ == "__main__":

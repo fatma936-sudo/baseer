@@ -39,6 +39,7 @@ const stage=document.getElementById('stage'), hint=document.getElementById('hint
 const WELCOME="أهلاً بك في بَصير، مساعدك الصوتي. النظام جاهز. لطلب غرض، المس الشاشة مع الاستمرار، قل ما تريد، ثم ارفع إصبعك.";
 const ACK="تم استلام الأمر، قيد التنفيذ";
 let stream=null, mr=null, chunks=[], state='idle', welcomeDone=false, pressTs=0;
+const SESSION_ID = Math.random().toString(36).slice(2,14);   // continues multi-turn dialogs
 
 function setStatus(t,c){ statusEl.textContent=t||""; statusEl.style.color=c||"#1d1d1f"; }
 function ttsUrl(t){ return '/tts?text='+encodeURIComponent(t); }
@@ -48,22 +49,28 @@ function ripple(x,y,color){
   r.style.background=color; r.style.animation='rip .8s ease-out forwards';
   stage.appendChild(r); setTimeout(()=>r.remove(),800);
 }
-// Speak via Aura TTS; if it fails (rate limit / error), fall back to the browser voice.
-function browserSay(text, done){
+// ONE reused <audio>, UNLOCKED on the first touch. iOS requires the first play()
+// to be inside a user gesture; after that, programmatic play() works post-async.
+const player = new Audio();
+function browserSay(text){
   try{
     const u=new SpeechSynthesisUtterance(text); u.lang='ar-SA';
     const v=speechSynthesis.getVoices().find(x=>x.lang&&x.lang.toLowerCase().startsWith('ar'));
-    if(v) u.voice=v; u.onend=done; u.onerror=done;
-    speechSynthesis.cancel(); speechSynthesis.speak(u);
-  }catch(e){ done&&done(); }
+    if(v) u.voice=v; speechSynthesis.cancel(); speechSynthesis.speak(u);
+  }catch(e){}
 }
+// Always resolves (timeout backstop) so the UI can never get stuck waiting on audio.
 function speak(text){
   return new Promise(res=>{
-    let done=false; const fin=()=>{ if(!done){done=true; res();} };
-    const a=new Audio(ttsUrl(text));
-    a.onended=fin;
-    a.onerror=()=>browserSay(text, fin);
-    a.play().then(()=>{}).catch(()=>browserSay(text, fin));
+    let done=false; const fin=()=>{ if(done) return; done=true; clearTimeout(tm); res(); };
+    const tm=setTimeout(fin, 10000);
+    player.onended=fin;
+    player.onerror=()=>{ browserSay(text); setTimeout(fin, 2500); };  // Aura failed -> phone voice
+    try{
+      player.src=ttsUrl(text);
+      const p=player.play();
+      if(p) p.catch(()=>{ browserSay(text); setTimeout(fin, 2500); });
+    }catch(e){ browserSay(text); setTimeout(fin, 2500); }
   });
 }
 
@@ -71,41 +78,46 @@ function speak(text){
 // Just nudge the screen reader; don't call Aura on load (saves quota, avoids 429 spam).
 window.addEventListener('load', ()=>{ hint.focus(); });
 
-async function getStream(){ if(!stream){ stream=await navigator.mediaDevices.getUserMedia({audio:true}); } return stream; }
-
 async function startListening(){
-  try{ await getStream(); }
-  catch(e){ setStatus("لا يمكن الوصول إلى الميكروفون (يتطلب https على الجوال).","#ff3b30"); return; }
+  try{
+    if(stream){ try{ stream.getTracks().forEach(t=>t.stop()); }catch(e){} }  // drop stale stream
+    stream = await navigator.mediaDevices.getUserMedia({audio:true});        // FRESH mic each time (iOS)
+  }catch(e){ setStatus("لا يمكن الوصول إلى الميكروفون (يتطلب https).","#ff3b30"); return; }
   chunks=[]; mr=new MediaRecorder(stream);
-  mr.ondataavailable=e=>{ if(e.data.size) chunks.push(e.data); };
+  mr.ondataavailable=e=>{ if(e.data && e.data.size) chunks.push(e.data); };
   mr.onstop=onRecorded;
-  mr.start(); state='listening'; stage.className='listening';
+  mr.start(250);                       // timeslice -> emit data periodically (avoids empty blobs)
+  state='listening'; stage.className='listening';
   setStatus("أتحدّث الآن… ارفع إصبعك للإرسال","#0a84ff");
 }
 
 async function onRecorded(){
-  // ignore accidental quick taps
-  if(Date.now()-pressTs < 350 || !chunks.length){
+  const blob=new Blob(chunks,{type:(mr&&mr.mimeType)||'audio/webm'});
+  // ignore accidental quick taps / empty captures
+  if(Date.now()-pressTs < 250 || blob.size < 1200){
     state='idle'; stage.className=''; setStatus("لم أسمع شيئًا، حاول مرة أخرى.","#ff9f0a"); return;
   }
   state='busy'; stage.className='busy'; setStatus("جارٍ المعالجة…","#86868b");
-  const blob=new Blob(chunks,{type:(mr&&mr.mimeType)||'audio/webm'});
-  browserSay(ACK);                                       // ack via phone voice (no Aura quota)
+  speak(ACK);                                            // plays during processing (player already unlocked)
   try{
-    const fd=new FormData(); fd.append('file', blob, 'command.webm');
+    const fd=new FormData(); fd.append('file', blob, 'command.webm'); fd.append('session_id', SESSION_ID);
     const r=await fetch('/command-audio',{method:'POST',body:fd});
     const data=await r.json();
-    if(data.error){ setStatus("خطأ: "+data.error,"#ff3b30"); browserSay("عذراً، صار خطأ"); }
-    else { setStatus("سمعتك: "+data.heard+"  —  "+data.reply,"#1d1d1f"); await speak(data.reply); }
+    if(data.error){ setStatus("خطأ: "+data.error,"#ff3b30"); await speak("عذراً، صار خطأ"); }
+    else {
+      const hint = data.awaiting ? "  (اضغط وأجب)" : "";
+      setStatus("سمعتك: "+data.heard+"  —  "+data.reply+hint,"#1d1d1f");
+      await speak(data.reply);   // if awaiting, this is the question; user presses-and-holds to answer
+    }
   }catch(e){ setStatus("تعذّر الاتصال بالخادم.","#ff3b30"); }
-  state='idle'; stage.className='';
+  finally { state='idle'; stage.className=''; }            // ALWAYS reset -> can record again
 }
 
 stage.addEventListener('pointerdown',(ev)=>{
   ev.preventDefault(); hint.style.opacity=0;
   if(state==='busy') return;
-  if(!welcomeDone){                                       // first touch: greet + unlock audio
-    welcomeDone=true; browserSay(WELCOME);               // welcome via phone voice (no Aura quota)
+  if(!welcomeDone){                                       // first touch: greet AND unlock the audio player
+    welcomeDone=true; speak(WELCOME);                    // plays via player in-gesture -> unlocks it for the session
     ripple(ev.clientX,ev.clientY,'rgba(52,199,89,.18)'); return;
   }
   pressTs=Date.now(); ripple(ev.clientX,ev.clientY,'rgba(10,132,255,.18)'); startListening();

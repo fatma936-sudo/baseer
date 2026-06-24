@@ -2,6 +2,31 @@
 __pycache__/
 *.pyc
 *.pt
+*.safetensors
 certs/
 logs/
 tts_cache/
+
+# trained weights live on Hugging Face, not in git (1.1 GB)
+policy_vla/
+policy_vla_*bak*/
+outputs/
+
+# machine-specific calibration artifacts (regenerate per setup)
+grasp_cfg.json
+delivery_pose.json
+localization_map.json
+
+# debug / capture images
+*.jpg
+deploy_view.jpg
+train_view.jpg
+vanity.jpg
+cam_now.jpg
+ref_view.jpg
+
+# misc local junk
+.DS_Store
+*.log
+viz/
+*.rrd

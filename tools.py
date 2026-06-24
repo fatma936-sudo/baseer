@@ -13,13 +13,42 @@ Edit SCENE_ITEMS to test grounding and the graceful-failure path
 
 import os
 
-# What's currently on the vanity. (Arabic labels, as the user would name them.)
-SCENE_ITEMS = ["عطر ديور", "كريم مرطب", "واقي شمس"]  # Dior perfume, moisturizer, sunscreen
+# Product registry: catalog name -> how to recognize it (brand text AND color/shape).
+# This is what lets Fanar-Oryx map "Living Proof Perfect Hair Day" -> dry shampoo, etc.,
+# and fall back to color when the label is unreadable. Edit to match YOUR products.
+PRODUCTS = {
+    "عطر الياسمين":     "perfume — The Body Shop 'Wild Jasmine' (clear glass bottle, amber/yellow liquid)",
+    "عطر شيا":          "perfume — The Body Shop 'Shea' (clear glass bottle)",
+    "عطر المسك الأبيض": "perfume — The Body Shop 'White Musk' (clear glass bottle, clear liquid)",
+    "شامبو جاف":        "dry shampoo — brand 'Living Proof Perfect Hair Day' (tall slim aerosol can)",
+    "بودرة الشعر":      "hair styling powder spray — brand 'LA Biosthetique Style' Powder Spray (tall aerosol can)",
+    "سيروم الشعر":      "hair serum — brand 'Kerastase' (small bottle/tube)",
+    "سيروم الوجه":      "face night serum — brand 'Vichy' / 'Normaderm' (small bottle)",
+}
+# The two aerosol cans (شامبو جاف vs بودرة الشعر) look alike -> distinguished by BRAND text.
+SCENE_ITEMS = list(PRODUCTS.keys())  # "السيروم" alone stays ambiguous (two serums) -> agent asks
 
 
 def perceive_scene():
-    """Look at the vanity and return the items currently present."""
-    if os.environ.get("BASEER_VISION") == "1":
+    """Look at the vanity and return the items currently present.
+
+    Backend via BASEER_PERCEIVE: 'oryx' (Fanar vision, reads labels) | 'yolo' | 'stub'.
+    """
+    backend = os.environ.get(
+        "BASEER_PERCEIVE", "yolo" if os.environ.get("BASEER_VISION") == "1" else "stub"
+    ).lower()
+
+    if backend == "oryx":
+        try:
+            import cv2, vision
+            from fanar import describe_scene
+            _ok, buf = cv2.imencode(".jpg", vision.capture_frame())
+            items = describe_scene(buf.tobytes(), PRODUCTS)   # registry-grounded (brand + color)
+            print(f"  [tool] perceive_scene() [Fanar-Oryx] -> {items}")
+            return {"items": items}
+        except Exception as e:
+            print(f"  [tool] perceive_scene() oryx failed ({e}); using stub list")
+    elif backend == "yolo":
         try:
             import vision
             items = vision.perceive()
@@ -27,17 +56,60 @@ def perceive_scene():
             return {"items": items}
         except Exception as e:
             print(f"  [tool] perceive_scene() vision failed ({e}); using stub list")
+
     print(f"  [tool] perceive_scene() -> {SCENE_ITEMS}")
     return {"items": list(SCENE_ITEMS)}
 
 
+# Per-item task strings the grasp policy was trained on (English single_task).
+GRASP_TASKS = {
+    "سيروم الشعر": "Pick up the hair serum and place it in the delivery zone",
+    "سيروم الوجه": "Pick up the face serum and place it in the delivery zone",
+}
+
+_GRASP = None  # lazily-built, reused GraspController (keeps one robot connection)
+
+
+def _grasp_controller():
+    global _GRASP
+    if _GRASP is None:
+        from grasp import GraspController
+        _GRASP = GraspController(
+            policy_path=os.environ.get("BASEER_POLICY", "~/baseer/policy_vla/pretrained_model"),
+            port=os.environ.get("BASEER_FOLLOWER_PORT", "/dev/tty.usbmodem5AB90677591"),
+            robot_id=os.environ.get("BASEER_FOLLOWER_ID", "follower_so100"),
+            cam_index=int(os.environ.get("BASEER_CAM_INDEX", "0")),
+        )
+    return _GRASP
+
+
 def deliver(item):
-    """Pick `item` from the vanity and place it at the fixed delivery zone."""
+    """Pick `item` from the vanity and place it at the fixed delivery zone.
+
+    With BASEER_GRASP=policy, drives the real arm via the closed-loop, retrying
+    GraspController (torque + width verification, re-approach on a miss). Otherwise
+    stays a stub so the voice/agent stack runs without the arm.
+    """
     if item not in SCENE_ITEMS:
         print(f"  [tool] deliver(item='{item}') -> NOT PRESENT")
         return {"ok": False, "error": "item_not_present", "item": item,
                 "available": list(SCENE_ITEMS)}
-    print(f"  [tool] deliver(item='{item}') -> delivering to zone...")
+
+    if os.environ.get("BASEER_GRASP") == "policy":
+        task = GRASP_TASKS.get(item)
+        if task is None:
+            print(f"  [tool] deliver(item='{item}') -> no trained grasp policy for this item")
+            return {"ok": False, "error": "no_policy_for_item", "item": item}
+        try:
+            attempts = int(os.environ.get("BASEER_GRASP_ATTEMPTS", "3"))
+            ok = _grasp_controller().pick(task, attempts=attempts, item_name=item)
+            print(f"  [tool] deliver(item='{item}') -> {'DELIVERED' if ok else 'FAILED after retries'}")
+            return {"ok": ok, "item": item, "error": None if ok else "grasp_failed"}
+        except Exception as e:
+            print(f"  [tool] deliver(item='{item}') grasp error: {e}")
+            return {"ok": False, "error": f"grasp_error:{e}", "item": item}
+
+    print(f"  [tool] deliver(item='{item}') -> delivering to zone... (stub)")
     return {"ok": True, "item": item}
 
 
@@ -47,8 +119,14 @@ def say(text_ar):
     return {"ok": True}
 
 
+def ask(text_ar):
+    """Ask the user a clarifying question (speaks it) and wait for their answer."""
+    print(f"  [ASK] ❓ {text_ar}")
+    return {"ok": True, "awaiting": True}
+
+
 # --- dispatch + OpenAI-style tool schema -----------------------------------
-DISPATCH = {"perceive_scene": perceive_scene, "deliver": deliver, "say": say}
+DISPATCH = {"perceive_scene": perceive_scene, "deliver": deliver, "say": say, "ask": ask}
 
 TOOLS = [
     {
@@ -92,6 +170,26 @@ TOOLS = [
                     "text_ar": {
                         "type": "string",
                         "description": "The message in Arabic, matching the user's dialect. Keep it short and natural.",
+                    }
+                },
+                "required": ["text_ar"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ask",
+            "description": "Ask the user a clarifying question in Arabic when the request is "
+                           "AMBIGUOUS — i.e. it could refer to more than one item present on the "
+                           "vanity (e.g. 'السيروم' when both a face serum and a hair serum are "
+                           "present). Speak the options and wait for the user's answer; do NOT guess.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "text_ar": {
+                        "type": "string",
+                        "description": "The clarifying question in Arabic, naming the options.",
                     }
                 },
                 "required": ["text_ar"],

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>بَصير · Baseer — Arabic voice-controlled assistive arm</title>
+<meta name="description" content="Baseer: an Arabic voice-controlled assistive robot arm. Fanar brain + Aura voice + Oryx eyes + SmolVLA muscle. Fanar hackathon, Theme 4." />
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --line:#26303d; --ink:#e6edf3; --mut:#9aa7b4;
+    --acc:#7c5cff; --acc2:#16c79a; --gold:#e0b341;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.6}
+  a{color:var(--acc2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:980px;margin:0 auto;padding:0 22px}
+  header{padding:72px 0 40px;text-align:center;background:
+    radial-gradient(900px 380px at 50% -10%, rgba(124,92,255,.22), transparent 70%)}
+  h1{font-size:64px;margin:0;letter-spacing:-1px}
+  .sub{color:var(--mut);font-size:20px;margin:10px 0 6px}
+  .tag{display:inline-block;margin-top:14px;padding:5px 14px;border:1px solid var(--line);
+       border-radius:999px;color:var(--gold);font-size:13px}
+  .cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin:30px 0 4px}
+  .btn{display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border-radius:10px;
+       border:1px solid var(--line);background:var(--panel);color:var(--ink);font-weight:600;font-size:15px}
+  .btn.primary{background:linear-gradient(135deg,var(--acc),#5a3fd6);border-color:transparent}
+  .btn.green{background:linear-gradient(135deg,var(--acc2),#0e9e7a);border-color:transparent;color:#04140f}
+  section{padding:40px 0;border-top:1px solid var(--line)}
+  h2{font-size:26px;margin:0 0 6px}
+  h2 .num{color:var(--acc);font-variant-numeric:tabular-nums;margin-inline-end:8px}
+  .lead{color:var(--mut);margin:0 0 22px}
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .card h3{margin:0 0 6px;font-size:16px}
+  .card p{margin:0;color:var(--mut);font-size:14px}
+  .organ{font-size:13px;color:var(--acc2);font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+  pre{background:#0a0e14;border:1px solid var(--line);border-radius:12px;padding:16px;overflow:auto;
+      font-size:12.5px;color:#cdd9e5;line-height:1.5}
+  .steps{counter-reset:s;list-style:none;padding:0;margin:0}
+  .steps li{position:relative;padding:12px 0 12px 46px;border-bottom:1px solid var(--line)}
+  .steps li:last-child{border-bottom:0}
+  .steps li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:11px;
+     width:30px;height:30px;border-radius:50%;background:var(--acc);color:#fff;display:grid;place-items:center;
+     font-weight:700;font-size:14px}
+  .steps b{color:var(--ink)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;background:rgba(22,199,154,.14);
+        color:var(--acc2);font-size:12px}
+  .stat{font-size:30px;font-weight:800;color:var(--gold)}
+  footer{padding:40px 0 70px;color:var(--mut);text-align:center;border-top:1px solid var(--line)}
+  .rtl{direction:rtl}
+  @media(max-width:760px){.g2,.g4{grid-template-columns:1fr}h1{font-size:46px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1 class="rtl">بَصير</h1>
+    <div class="sub"><b>Baseer</b> — an Arabic voice-controlled assistive arm</div>
+    <div class="sub" style="font-size:16px">“the one who sees” — the eyes &amp; hands of a blind or hands-occupied person, driven entirely by spoken Arabic</div>
+    <div class="tag">Fanar Hackathon · Theme 4 — Physical AI / Imitation Learning</div>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/fatma936-sudo/baseer">⌥ Code on GitHub</a>
+      <a class="btn green" href="https://huggingface.co/55CancriE/baseer-smolvla-serums">🤖 Model weights</a>
+      <a class="btn green" href="https://huggingface.co/datasets/55CancriE/baseer_serums">📦 Dataset</a>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<section>
+  <h2><span class="num">01</span>What it does</h2>
+  <p class="lead">Say, in any Arabic dialect — <span class="rtl">«ناوليني سيروم الشعر»</span> — and the arm sees what's on the table, localizes the item, grasps it with a learned policy, retries if it misses, hands it to a fixed delivery zone, and speaks back in Arabic. If the item isn't there, it doesn't guess — it says aloud what <em>is</em>.</p>
+  <div class="grid g4">
+    <div class="card"><div class="organ">Brain</div><h3>Fanar-C-2-27B</h3><p>Understands dialect, decides, disambiguates, refuses safely.</p></div>
+    <div class="card"><div class="organ">Eyes</div><h3>Fanar-Oryx</h3><p>Reads labels — identifies <em>which</em> serum and localizes <em>where</em>.</p></div>
+    <div class="card"><div class="organ">Voice</div><h3>Aura ASR + TTS</h3><p>Hears the user, replies in Arabic (voice Noor).</p></div>
+    <div class="card"><div class="organ">Muscle</div><h3>SmolVLA · SO-100</h3><p>Grasps &amp; delivers, with closed-loop retry.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">02</span>The full pipeline</h2>
+  <p class="lead">Fanar reasons over four tools; <code>deliver()</code> runs a hybrid perception-guided grasp.</p>
+  <ol class="steps">
+    <li><b>Listen</b> — phone tap-to-talk → Aura ASR → <code>normalize.py</code> fixes diacritics/brand mishears.</li>
+    <li><b>Reason</b> — Fanar agent loop (ReAct) emits JSON actions: perceive → deliver → say / ask.</li>
+    <li><b>See</b> — Fanar-Oryx reads the labels and reports which serums are on the table.</li>
+    <li><b>Localize</b> — Oryx returns the target's pixel; a calibrated map → arm hover pose above it.</li>
+    <li><b>Grasp</b> — SmolVLA policy does the final descent + close from the hover.</li>
+    <li><b>Verify</b> — gripper torque (current) + width say <span class="pill">HELD</span> or <span class="pill">EMPTY</span>.</li>
+    <li><b>Retry</b> — on a miss: open, re-home, re-localize, try again.</li>
+    <li><b>Deliver &amp; speak</b> — scripted waypoints to the hand-off zone, release, confirm in Arabic via Aura.</li>
+  </ol>
+</section>
+
+<section>
+  <h2><span class="num">03</span>Hierarchical VLA</h2>
+  <p class="lead">Fanar is a <b>task-level</b> Vision-Language→Action controller (actions = tool calls); SmolVLA is the <b>low-level</b> motor controller. No hardcoded if/else — every semantic decision is Fanar's.</p>
+  <pre class="rtl">SYSTEM:  أنت بَصير … اعرض المشهد قبل التسليم؛ تكلّم دائماً؛ وضّح عند الالتباس
+USER:    ناوليني السيروم
+  Fanar ▶ {"action":"perceive_scene"}
+OBS:     {"items":["سيروم الشعر","سيروم الوجه"]}
+  Fanar ▶ {"action":"ask","args":{"text_ar":"عندي سيروم الوجه وسيروم الشعر، أي واحد تبي؟"}}
+USER:    سيروم الشعر
+  Fanar ▶ {"action":"deliver","args":{"item":"سيروم الشعر"}}
+  Fanar ▶ {"action":"say","args":{"text_ar":"تفضّل، سيروم الشعر أمامك"}}</pre>
+</section>
+
+<section>
+  <h2><span class="num">04</span>Dataset &amp; model</h2>
+  <div class="grid g2">
+    <div class="card">
+      <h3>📦 Dataset — <a href="https://huggingface.co/datasets/55CancriE/baseer_serums">baseer_serums</a></h3>
+      <p>28 episodes (13 hair + 15 face serum) · single front camera 640×480@30 · LeRobot format · two language tasks · varied object placement · quality-checked firm grasps.</p>
+    </div>
+    <div class="card">
+      <h3>🤖 Model — <a href="https://huggingface.co/55CancriE/baseer-smolvla-serums">baseer-smolvla-serums</a></h3>
+      <p>SmolVLA (SmolVLM2-500M backbone, ~450M params), language-conditioned · 20k steps, batch 32, <b>loss 0.012</b> · deploys on MPS or CUDA · swappable with ACT / π0 / GR00T.</p>
+    </div>
+  </div>
+  <div class="grid g4" style="margin-top:16px;text-align:center">
+    <div class="card"><div class="stat">28</div><p>episodes</p></div>
+    <div class="card"><div class="stat">0.012</div><p>final loss</p></div>
+    <div class="card"><div class="stat">4</div><p>Fanar models used</p></div>
+    <div class="card"><div class="stat">~20Hz</div><p>control on MPS</p></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">05</span>Use of Fanar</h2>
+  <table>
+    <tr><th>Capability</th><th>Model</th><th>Role</th></tr>
+    <tr><td>Reasoning</td><td>Fanar-C-2-27B</td><td>dialect understanding, planning, tool selection, refusal</td></tr>
+    <tr><td>Speech-to-text</td><td>Fanar-Aura-STT-1</td><td>Arabic voice → text</td></tr>
+    <tr><td>Text-to-speech</td><td>Fanar-Aura-TTS-2</td><td>spoken Arabic replies (Noor)</td></tr>
+    <tr><td>Vision</td><td>Fanar-Oryx-IVU-2</td><td>reads labels → identifies &amp; localizes the item</td></tr>
+  </table>
+  <p class="lead" style="margin-top:18px">Dialect handling is the star: Gulf / Egyptian / MSA map <em>directly</em> to actions — no English translation step. Oryx keeps perception Fanar-native and supplies the localization that guides the arm.</p>
+</section>
+
+<section>
+  <h2><span class="num">06</span>Run it</h2>
+  <pre># voice / agent demo (laptop)
+pip install -r requirements.txt
+cp .env.example .env          # FANAR_API_KEY=...
+BASEER_PERCEIVE=oryx python server.py   →  http://localhost:8080
+
+# deploy the grasp (laptop with the SO-100)
+python calibrate_grasp.py        --port &lt;follower&gt; --id follower_so100
+python save_delivery_pose.py     --port &lt;follower&gt; --id follower_so100
+python calibrate_localization.py --port &lt;follower&gt; --id follower_so100
+python grasp.py --policy ~/baseer/policy_vla/pretrained_model \
+  --task "Pick up the hair serum and place it in the delivery zone" \
+  --item "سيروم الشعر" --attempts 3</pre>
+</section>
+
+</div>
+
+<footer>
+  <div class="wrap">
+    <p>Baseer — where the intelligence is genuinely Fanar's, the impact is dignified, and the system proves it by failing gracefully.</p>
+    <p><a href="https://github.com/fatma936-sudo/baseer">GitHub</a> · <a href="https://huggingface.co/55CancriE/baseer-smolvla-serums">Model</a> · <a href="https://huggingface.co/datasets/55CancriE/baseer_serums">Dataset</a></p>
+  </div>
+</footer>
+</body>
+</html>

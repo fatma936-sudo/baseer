@@ -19,7 +19,7 @@ import os
 import json
 from pathlib import Path
 
-from fastapi import FastAPI, Request, UploadFile, File
+from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, FileResponse, Response
 
 from agent import run as agent_run
@@ -28,6 +28,8 @@ from normalize import normalize_command
 import tools as T
 
 ACK = "تم استلام الأمر، قيد التنفيذ"
+FALLBACK = "عذراً، ما قدرت أُكمل طلبك، حاول مرة ثانية"   # spoken on any agent failure (never raw errors)
+NOHEAR = "عذراً، ما سمعتك بوضوح، حاول مرة ثانية"
 
 import time
 LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
@@ -56,9 +58,13 @@ WEB = Path(__file__).parent / "web"
 # --- DEV MOCK (used only when FANAR_API_KEY is not set) ---------------------
 # Lets you click through the whole UI + agent loop before wiring real Fanar.
 _SYNONYMS = {
-    "عطر ديور": ["عطر", "ديور", "برفان", "بارفان", "perfume", "dior"],
-    "كريم مرطب": ["مرطب", "مرطّب", "كريم", "moistur", "cream"],
-    "واقي شمس": ["واقي", "شمس", "صن", "sunscreen", "spf"],
+    "عطر شيا": ["شيا", "shea"],
+    "عطر المسك الأبيض": ["مسك", "المسك", "musk"],
+    "عطر الياسمين": ["ياسمين", "الياسمين", "jasmine"],
+    "شامبو جاف": ["شامبو", "dry shampoo"],
+    "بودرة الشعر": ["بودرة", "باودر", "powder"],
+    "سيروم الشعر": ["كيراستاز", "hair serum"],
+    "سيروم الوجه": ["فيشي", "نورمادرم", "face serum", "night"],
 }
 
 
@@ -70,40 +76,63 @@ def _resolve_item(text):
 
 
 class MockClient:
+    """Dev brain (no key): emits JSON actions, handles serum ambiguity with ask."""
     model = "mock-dev"
 
     def chat(self, messages, tools=None, temperature=0.2, response_format=None):
-        user = next(
-            (m["content"] for m in messages
-             if m["role"] == "user" and not str(m["content"]).startswith("OBSERVATION")),
-            "",
+        user_all = " ".join(
+            str(m.get("content", "")) for m in messages
+            if m["role"] == "user" and not str(m.get("content", "")).startswith("OBSERVATION")
         )
-        issued = [tc["function"]["name"]
-                  for m in messages if m.get("tool_calls")
-                  for tc in m["tool_calls"]]
+        issued = set()
+        for m in messages:
+            if m["role"] == "assistant":
+                try:
+                    issued.add(json.loads(m["content"]).get("action"))
+                except Exception:
+                    pass
 
-        def call(name, args):
-            return {"role": "assistant", "content": None, "tool_calls": [{
-                "id": f"call_{name}", "type": "function",
-                "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)},
-            }]}
+        def act(a, args=None):
+            return {"role": "assistant",
+                    "content": json.dumps({"action": a, "args": args or {}}, ensure_ascii=False)}
 
         if "perceive_scene" not in issued:
-            return call("perceive_scene", {})
-        item = _resolve_item(user)
+            return act("perceive_scene")
+        item = _resolve_item(user_all)
+        if item is None and "سيروم" in user_all and "ask" not in issued:
+            return act("ask", {"text_ar": "أي سيروم تريد، سيروم الوجه أم سيروم الشعر؟"})
         if item and "deliver" not in issued:
-            return call("deliver", {"item": item})
+            return act("deliver", {"item": item})
         if "say" not in issued:
-            if item:
-                txt = f"تفضّل، {item} قدّامك."
-            else:
-                txt = "للأسف هذا غير موجود على التسريحة. المتوفّر: " + "، ".join(T.SCENE_ITEMS) + "."
-            return call("say", {"text_ar": txt})
-        return {"role": "assistant", "content": ""}
+            txt = (f"تفضّل، {item} قدّامك." if item
+                   else "للأسف غير متوفّر. المتوفّر: " + "، ".join(T.SCENE_ITEMS))
+            return act("say", {"text_ar": txt})
+        return act("done")
 
 
 def get_client():
     return FanarClient() if os.environ.get("FANAR_API_KEY") else MockClient()
+
+
+# --- multi-turn sessions (for clarifying questions) ------------------------
+SESSIONS = {}  # session_id -> conversation messages, kept only while awaiting a reply
+
+
+def _next_sid():
+    import uuid
+    return uuid.uuid4().hex[:12]
+
+
+def _run_turn(text, session_id):
+    """Run one user turn, continuing a session if one is awaiting an answer."""
+    history = SESSIONS.pop(session_id, None) if session_id else None
+    result = agent_run(text, client=get_client(), verbose=False, history=history)
+    sid = session_id or _next_sid()
+    if result["awaiting"]:
+        SESSIONS[sid] = result["messages"]
+    else:
+        SESSIONS.pop(sid, None)
+    return sid, (result["reply"] or "تم."), result
 
 
 # --- routes ----------------------------------------------------------------
@@ -119,13 +148,12 @@ async def command(req: Request):
     if not text:
         return JSONResponse({"error": "empty text"}, status_code=400)
     try:
-        transcript = agent_run(text, client=get_client(), verbose=False)
+        sid, reply, result = _run_turn(text, body.get("session_id", ""))
     except FanarError as e:
-        return JSONResponse({"error": str(e)}, status_code=502)
-    reply = " ".join(t["args"].get("text_ar", "")
-                     for t in transcript if t["action"] == "say") or "تم."
-    return {"heard": text, "reply": reply, "actions": transcript,
-            "engine": get_client().model}
+        print(f"[agent] FAILED: {e}")
+        return {"heard": text, "reply": FALLBACK, "awaiting": False, "session_id": body.get("session_id", "")}
+    return {"heard": text, "reply": reply, "awaiting": result["awaiting"],
+            "session_id": sid, "actions": result["transcript"]}
 
 
 import hashlib
@@ -151,29 +179,29 @@ def tts(text: str, voice: str = ""):
 
 
 @app.post("/command-audio")
-async def command_audio(file: UploadFile = File(...)):
-    """Voice command: audio -> Aura ASR -> agent -> {heard, reply}."""
+async def command_audio(file: UploadFile = File(...), session_id: str = Form("")):
+    """Voice command: audio -> Aura ASR -> agent -> {heard, reply, awaiting, session_id}."""
     audio = await file.read()
     try:
         raw = transcribe(audio, filename=file.filename or "audio.webm",
                          mime=file.content_type or "audio/webm").strip()
     except FanarError as e:
         print(f"[asr] FAILED: {e}")
-        return JSONResponse({"error": f"asr: {e}"}, status_code=502)
+        return {"heard": "", "reply": NOHEAR, "awaiting": False, "session_id": session_id or ""}
     text = normalize_command(raw)
     if not text:
         log_turn(audio, raw, text, "")
-        return JSONResponse({"error": "no speech detected", "raw_asr": raw}, status_code=400)
+        return {"heard": "", "reply": NOHEAR, "awaiting": False, "session_id": session_id or ""}
     try:
-        transcript = agent_run(text, client=get_client(), verbose=False)
+        sid, reply, result = _run_turn(text, session_id)
     except FanarError as e:
-        print(f"[agent] FAILED: {e}")
+        print(f"[agent] FAILED: {e}")          # logged for us; user hears a clean retry
         log_turn(audio, raw, text, f"ERROR: {e}")
-        return JSONResponse({"heard": text, "error": str(e)}, status_code=502)
-    reply = " ".join(t["args"].get("text_ar", "")
-                     for t in transcript if t["action"] == "say") or "تم."
+        SESSIONS.pop(session_id, None)          # reset the dialog on failure
+        return {"heard": text, "reply": FALLBACK, "awaiting": False, "session_id": session_id or ""}
     log_turn(audio, raw, text, reply)
-    return {"heard": text, "raw_asr": raw, "reply": reply, "actions": transcript}
+    return {"heard": text, "raw_asr": raw, "reply": reply,
+            "awaiting": result["awaiting"], "session_id": sid}
 
 
 if __name__ == "__main__":

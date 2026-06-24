@@ -2,9 +2,16 @@
 
 > *بَصير ≈ "the perceptive one / the one who sees."* The arm becomes the eyes and hands of a blind or hands-occupied person, driven entirely by spoken Arabic.
 
-Baseer lets a user say, in everyday Arabic dialect — *"ناوليني العطر"* — and a robot arm checks what's actually in front of it, fetches the item, places it at a fixed delivery spot, and **speaks back in Arabic** to confirm. If the item isn't there, it doesn't guess — it says aloud what *is* available.
+Baseer lets a user say, in everyday Arabic dialect — *"ناوليني سيروم الشعر"* — and a robot arm **sees** what's actually on the table, **localizes** the item, **grasps** it with a learned policy, **retries if it misses**, **delivers** it to a fixed hand-off zone, and **speaks back in Arabic** to confirm. If the item isn't there, it doesn't guess — it says aloud what *is* available.
 
 Built for the Fanar hackathon, **Theme 4: Physical AI / Imitation Learning**.
+
+| | |
+|---|---|
+| 🤖 **Model weights** (SmolVLA) | https://huggingface.co/55CancriE/baseer-smolvla-serums |
+| 📦 **Dataset** (LeRobot, 28 episodes) | https://huggingface.co/datasets/55CancriE/baseer_serums |
+| 🌐 **Project page** | https://fatma936-sudo.github.io/baseer |
+| 🦾 **Robot** | SO-100 (Feetech STS3215), single front camera |
 
 ---
 
@@ -15,210 +22,237 @@ For a visually-impaired person, the hard part of daily life isn't *deciding* wha
 1. **Control barrier** — they're joystick/teleop driven, which assumes fine motor control and sight.
 2. **Language barrier** — interfaces and assistants are English-first.
 
-For an elderly, blind, Arabic-speaking user, neither works. The accessibility gap is **natural, dialectal Arabic** as the interface to a physical assistant — and that gap is precisely what Fanar is built to close.
+For an elderly, blind, Arabic-speaking user, neither works. The accessibility gap is **natural, dialectal Arabic** as the interface to a physical assistant — exactly what Fanar is built to close.
 
-**Use case (demo):** the arm sits on a **vanity/dressing table** and hands the user perfume / skincare items on request. Items live in fixed, memorable positions (which is how a blind person organizes anyway). Audio is the user's **only** feedback channel.
-
-**Value proposition:** the *intelligence* (understanding spoken dialect, deciding what to do, refusing safely) is genuinely Fanar's; the impact is real and dignified; and the design proves it by **failing gracefully** — which, for an assistive tool, *is* the product.
-
-**Societal impact:** independence and dignity for visually-impaired Arabic speakers; a template for Arabic-first assistive robotics; and a direct fit for Fanar's sovereign-AI accessibility mission.
+**Use case (demo):** the arm sits on a **vanity / dressing table** and hands the user **skincare serums** (hair serum, face serum) on request. Audio is the user's **only** feedback channel. The intelligence (understanding dialect, deciding, refusing safely) is genuinely Fanar's; the design proves it by **failing gracefully** — which, for an assistive tool, *is* the product.
 
 ---
 
-## 2. Solution architecture
+## 2. System architecture
 
-Three tiers, split by a hard constraint: **the robot's USB serial and the camera are only visible to the machine they're plugged into**, so a laptop must host the control loop. The phone is a thin client (mic + speaker); the GPU box is used **offline only** to train the motion policy.
+Three tiers, split by a hard constraint: **the robot's USB serial and the camera are only visible to the machine they're plugged into**, so a laptop hosts the control loop. The phone is a thin client (mic + speaker); the GPU box is used **offline only** to train the motion policy.
 
 ```
-┌─────────────────┐    HTTPS (LAN/tunnel)    ┌──────────────────────────────────────────┐   HTTPS API   ┌──────────────────┐
-│   PHONE          │ ──── audio upload ─────▶ │   LAPTOP (host / orchestrator)             │ ── requests ─▶│   FANAR CLOUD    │
-│  thin client     │ ◀─── spoken reply ────── │   server.py (FastAPI)                      │ ◀ responses ──│  Aura ASR / TTS  │
-│ • tap-hold UI    │                          │     ├ agent.py   (the agent loop / brain)  │               │  Fanar-C-2-27B   │
-│ • records mic    │                          │     ├ tools.py   (perceive / deliver / say)│               └──────────────────┘
-│ • plays MP3      │                          │     ├ vision.py  (YOLO eyes)               │   LOCAL on laptop:
-└─────────────────┘                          │     └ fanar.py   (Fanar + Aura client)     │   • YOLO-World (MPS)
-                                              │              │                             │   • OpenCV camera (idx 0)
-                                              │              ▼                             │   • USB serial → SO-100
-                                              │     SO-100 arm  (deliver = ACT / VLA)      │
-                                              └──────────────────────────────────────────┘
+┌─────────────┐  HTTPS   ┌──────────────────────────────────────────────┐  HTTPS API  ┌────────────────┐
+│   PHONE     │ ─audio─▶ │   LAPTOP  (host / orchestrator)                │ ─requests─▶ │  FANAR CLOUD   │
+│ thin client │ ◀reply── │   server.py (FastAPI)                          │ ◀responses─ │  Aura ASR/TTS  │
+│ tap-to-talk │          │     agent.py   ReAct loop (the brain)          │             │  Fanar-C-2-27B │
+└─────────────┘          │     tools.py   perceive / deliver / say / ask  │             │  Fanar-Oryx    │
+                         │     fanar.py   Fanar + Aura + Oryx client      │             └────────────────┘
+                         │     grasp.py   localize → grasp → retry → give │  LOCAL on laptop:
+                         │        │                                       │   • OpenCV camera (front)
+                         │        ▼                                       │   • USB serial → SO-100
+                         │   SO-100 arm  +  SmolVLA grasp policy          │
+                         └──────────────────────────────────────────────┘
+            OFFLINE (once, GPU box):  teleop demos → lerobot-record → lerobot-train (SmolVLA) → checkpoint
 ```
 
 **The four "organs":**
 
 | Organ | Technology | Responsibility |
 |---|---|---|
-| **Brain** | Fanar-C-2-27B | understand dialect, decide *what* to do, refuse safely |
-| **Eyes** | YOLO-World (local, open-vocab) | report what is actually on the vanity |
-| **Voice** | Aura ASR + Aura TTS | hear the user, speak back in Arabic |
-| **Muscle** | ACT / VLA on SO-100 (LeRobot) | physically grasp + deliver |
-
-**Two pipelines:**
-```
-ONLINE  (per request):  voice → Aura ASR → Fanar agent loop → YOLO → deliver → Aura TTS
-OFFLINE (once, on GPU):  teleop demos → record dataset → train ACT/VLA → checkpoint → plugs into deliver()
-```
+| **Brain** | `Fanar-C-2-27B` | understand dialect, decide *what* to do, disambiguate, refuse safely |
+| **Eyes** | `Fanar-Oryx-IVU-2` (VLM) | read labels, identify *which* serum, localize *where* it is |
+| **Voice** | Aura ASR + Aura TTS (voice **Noor**) | hear the user, speak back in Arabic |
+| **Muscle** | **SmolVLA** on SO-100 (LeRobot) | physically grasp + deliver, with closed-loop retry |
 
 ---
 
-## 3. Agentic workflow design
+## 3. The full pipeline
 
-The core is an **agentic control loop (ReAct: Reason → Act → Observe)** with **tool use**, where **Fanar is the decision-maker** and the Python is a thin executor. There is **no hardcoded `if/else` pipeline** — every semantic decision is made by Fanar, guided by a system prompt.
-
-### Action space — three tools
+### Online — one spoken request
 ```
-perceive_scene()  → {"items":[...]}     # YOLO: what's on the vanity
-deliver(item)     → {"ok":true/false}   # ACT/VLA: grasp + place at the fixed zone
+voice → Aura ASR → normalize → Fanar agent loop ─▶ perceive_scene (Oryx)
+                                                 ─▶ deliver(item)  ────────┐
+                                                 ─▶ say / ask (Aura TTS)   │
+                                                                           ▼
+                                            ┌──────────────  deliver(item) = grasp.py ──────────────┐
+                                            │ 1. Oryx LOCATES the item → pixel (u,v)                 │
+                                            │ 2. localization map: pixel → arm HOVER pose above it   │
+                                            │ 3. SmolVLA policy: final descent + grasp              │
+                                            │ 4. VERIFY grasp: torque (current) + gripper width      │
+                                            │ 5. miss? → open, re-home, re-localize, RETRY (×N)      │
+                                            │ 6. held? → scripted DELIVERY to the fixed zone → release│
+                                            └────────────────────────────────────────────────────────┘
+```
+
+### Offline — train the muscle (once)
+```
+teleop demos → lerobot-record  →  LeRobot dataset (28 eps)  →  lerobot-train --policy.type=smolvla  →  checkpoint
+```
+
+### Why a *hybrid* (perception-guided) grasp
+A pure imitation policy trained on a modest dataset learns the grasp *motion* but localizes imprecisely. Baseer keeps the imitation-learning component (the theme) **and** fixes targeting by letting **Oryx do coarse localization** and the **policy do the fine grasp**. This offloads the hard part (where is it?) from the thin-data policy onto the perception model — the same Fanar-native "eyes" that already identify the item.
+
+### Grasp verification & retry — a "smart" grasp
+Two sensor-free signals from the Feetech gripper motor decide success, with thresholds learned by `calibrate_grasp.py`:
+- **Torque** — `Present_Current`: pressing on an object keeps current high; an empty closed gripper settles low.
+- **Width** — `Present_Position`: an empty gripper closes all the way; an object holds the fingers open at its width.
+
+On a miss the controller opens, returns to a known pose, re-localizes and tries again — instead of blindly continuing with an empty claw. *(True recovery skill also comes from data: include a few "miss-then-reapproach" demos.)*
+
+---
+
+## 4. Agentic workflow (Fanar as a hierarchical VLA)
+
+The core is a **ReAct loop (Reason → Act → Observe)** with **tool use**, where **Fanar is the decision-maker** and Python is a thin executor — **no hardcoded `if/else` pipeline**.
+
+### Action space — four tools
+```
+perceive_scene()  → {"items":[...]}     # Oryx: what's on the table
+deliver(item)     → {"ok":true/false}   # localize → SmolVLA grasp → retry → deliver
 say(text_ar)      → {"ok":true}         # Aura TTS: speak to the user
+ask(text_ar)      → {"awaiting":true}   # clarify when a request is ambiguous (two serums)
 ```
-Fanar's entire output is *choosing among these*. That makes Fanar a **task-level VLA** (Vision–Language → Action, where actions are tool calls), with ACT/VLA as the **low-level** controller — a hierarchical VLA.
+Fanar's output is *choosing among these* → Fanar is a **task-level VLA** (Vision-Language → tool actions); SmolVLA is the **low-level** motor controller. A **hierarchical VLA**.
 
-### Who decides what
-| Actor | Decides | |
-|---|---|---|
-| **Fanar (LLM)** | which tool next, the args, when to stop, what to say, whether to refuse | *all semantics* |
-| **agent.py loop** | loop ≤ MAX_STEPS, parse JSON, dispatch to the tool, retry on errors, stop on `done` | *pure mechanics* |
-| **tools / vision / robot** | deterministic execution | *effectors* |
-
-### The loop, message by message (for *"ناوليني العطر"*)
+### The loop, message by message (for *"ناوليني السيروم"* with two serums present)
 ```
-SYSTEM:  You are بَصير … rules: perceive before deliver; always say; fail gracefully.
-USER:    ناوليني العطر
+SYSTEM:  You are بَصير … perceive before deliver; always say; disambiguate; fail gracefully.
+USER:    ناوليني السيروم
   Fanar ▶ {"action":"perceive_scene","args":{}}
-OBSERVATION (perceive_scene): {"items":["عطر ديور","كريم مرطب","واقي شمس"]}
-  Fanar ▶ {"action":"deliver","args":{"item":"عطر ديور"}}
-OBSERVATION (deliver): {"ok":true,"item":"عطر ديور"}
-  Fanar ▶ {"action":"say","args":{"text_ar":"تفضّل، العطر أمامك"}}
-OBSERVATION (say): {"ok":true}
-  Fanar ▶ {"action":"done","args":{}}            ← loop ends
+OBSERVATION: {"items":["سيروم الشعر","سيروم الوجه"]}
+  Fanar ▶ {"action":"ask","args":{"text_ar":"عندي سيروم الوجه وسيروم الشعر، أي واحد تبي؟"}}   ← waits
+USER:    سيروم الشعر
+  Fanar ▶ {"action":"deliver","args":{"item":"سيروم الشعر"}}
+OBSERVATION: {"ok":true,"item":"سيروم الشعر"}
+  Fanar ▶ {"action":"say","args":{"text_ar":"تفضّل، سيروم الشعر أمامك"}}
+  Fanar ▶ {"action":"done"}
 ```
-The **state is the growing message list** (Fanar is stateless per call; we re-send the whole history each turn). Each iteration: send full context → Fanar returns one JSON action → server executes the real tool → appends the result as `OBSERVATION:` → repeat until `done` or `MAX_STEPS`.
+State is the growing message list (Fanar is stateless per call; we re-send history each turn). Multi-turn disambiguation is held in server `SESSIONS`.
 
-### Planning & orchestration properties
-- **Grounding:** Fanar must `perceive_scene` and confirm an item is present before `deliver` — it never acts on an unseen item.
-- **Graceful failure:** if the requested item is absent from the observation, Fanar skips `deliver` and only `say`s what *is* available. *Same code path; the branch is decided by Fanar reading the observation.*
-- **Multi-step:** "العطر والمرطب" → deliver one, then the other, then a single spoken confirmation.
-- **Robustness:** content-filter / 429 / 5xx **retry with backoff**; tolerant JSON extraction (handles fences/stray text); **ASR normalization** before the loop; safe spoken fallback if no clean action.
-
-### Why JSON-action protocol (not native function-calling)
-We found Fanar-C-2-27B **accepts** the OpenAI `tools` parameter but **never emits `tool_calls`** — it just chats. So we drive it as a **JSON state machine**: `response_format={"type":"json_object"}` *forces* one JSON object per turn, and a strict few-shot prompt defines the schema and rules. This was the single change that took the agent from "narrates fake actions" to **reliable**.
+### Why a JSON-action protocol (not native function-calling)
+Fanar-C-2-27B **accepts** the OpenAI `tools` parameter but **never emits `tool_calls`** — it just chats. So we drive it as a **JSON state machine**: `response_format={"type":"json_object"}` forces one JSON action per turn, with a strict few-shot prompt. This was the single change that made the agent reliable.
 
 ---
 
-## 4. Use of Fanar and external tools/models
+## 5. Dataset & model
 
-### Fanar (the intelligence)
+### Dataset — `55CancriE/baseer_serums`
+- **28 episodes** = 13 hair serum + 15 face serum, single front camera (640×480 @ 30 fps), LeRobot format.
+- Two language tasks: *"Pick up the hair serum / face serum and place it in the delivery zone."*
+- Objects placed at varied positions (free placement) so the policy generalizes across the table.
+- Quality-checked: firm gripper closes on every episode (travel 68–100), no calibration/wrist anomalies.
+
+### Model — `55CancriE/baseer-smolvla-serums`
+- **SmolVLA** (SmolVLM2-500M backbone, ~450M params, ~100M trainable action expert), language-conditioned.
+- Trained 20 000 steps, batch 32, **final loss 0.012** on an RTX 6000 (~6.5 h).
+- Built from dataset features (`--policy.type=smolvla`) → single-camera config; deploys on Apple Silicon (MPS) or CUDA.
+- Drop-in swappable with ACT / π0 / GR00T (same LeRobot dataset + the policy-agnostic loader in `grasp.py`).
+
+---
+
+## 6. Use of Fanar
+
 | Capability | Model ID | Role |
 |---|---|---|
-| **Controller / reasoning** | `Fanar-C-2-27B` | the agent brain — dialect understanding, planning, tool selection, graceful refusal |
+| **Controller / reasoning** | `Fanar-C-2-27B` | agent brain — dialect understanding, planning, tool selection, refusal |
 | **Speech-to-text** | `Fanar-Aura-STT-1` | Arabic voice command → text |
-| **Text-to-speech** | `Fanar-Aura-TTS-2` (voice **Noor**) | spoken Arabic replies |
-| **Vision (optional)** | `Fanar-Oryx-IVU-2` | alternative `perceive_scene` that keeps perception inside Fanar |
+| **Text-to-speech** | `Fanar-Aura-TTS-2` (Noor) | spoken Arabic replies |
+| **Vision** | `Fanar-Oryx-IVU-2` | reads labels → identifies *which* serum and localizes *where* |
 
-Fanar's **dialect handling is the star**: Gulf / Egyptian / MSA and code-switching are understood natively, mapped *directly* to actions with **no English translation step** — which would only add latency and error and discard Fanar's main advantage.
-
-### External tools/models (the body)
-| Tool | Role |
-|---|---|
-| **YOLO-World** (`ultralytics`) | open-vocabulary perception for `perceive_scene` — zero training |
-| **ACT / SmolVLA** (LeRobot) | the learned grasp-and-deliver motion (`deliver`) |
-| **SO-100 arm** (Feetech STS3215) | the physical robot |
-| **FastAPI + OpenCV** | host server + camera capture |
-| *(planned)* local Whisper | ASR fallback for when Aura is rate-limited |
-
-### Fanar-as-VLA (the "go deeper" angle)
-Rather than fine-tuning a monolithic VLA (impossible via API — no weights, no action head, latency), Baseer realizes Fanar as a **hierarchical VLA**: Fanar = high-level Vision-Language→Action controller (actions = tool calls); ACT/VLA = low-level motor controller. The same recorded dataset can train **ACT** (reliable baseline) *and* a **language-conditioned VLA** (`smolvla`) — `--policy.type` is the only difference.
+Fanar's **dialect handling is the star**: Gulf / Egyptian / MSA and code-switching map *directly* to actions, no English translation step. Oryx keeps perception Fanar-native — it reads printed brand labels to tell visually-similar products apart (which plain object detectors cannot) and supplies the localization pixel that guides the arm.
 
 ---
 
-## 5. Evaluation results
+## 7. Results & findings
 
-### Functional (live, against the real Fanar API)
+### Functional (live, real Fanar API)
 | Test | Input | Result |
 |---|---|---|
-| Happy path (MSA) | "ناولني عطر ديور" | perceive → deliver → *"تفضل، العطر أمامك"* ✅ |
-| **Graceful failure** | "أبي الروج" (absent) | perceive → *"آسف، لا يوجد روج على الطاولة"* — **no delivery** ✅ |
-| Egyptian dialect | "هاتلي الكريم المرطب لو سمحت" | → deliver كريم مرطب ✅ |
-| Gulf dialect | "عطني واقي الشمس عساك بخير" | → deliver واقي شمس ✅ |
-| Multi-item | "ناولني العطر والمرطب" | deliver عطر → deliver كريم → confirm both ✅ |
+| Happy path | "ناولني سيروم الشعر" | perceive → localize → grasp → deliver → *"تفضّل، سيروم الشعر أمامك"* ✅ |
+| **Disambiguation** | "ناولني السيروم" (two present) | asks *"أي واحد تبي؟"*, waits, then delivers the chosen one ✅ |
+| **Graceful failure** | absent item | perceive → speaks what *is* available, **no delivery** ✅ |
+| Dialects | Egyptian / Gulf / MSA | understood natively → correct action ✅ |
+| Voice round-trip | TTS→MP3→ASR | exact text match ✅ |
 
-### Voice round-trip (Aura)
-TTS (`Noor`) → MP3 → ASR → text: exact match (*"تفضل عطر ديور أمامك"*). Both endpoints verified.
+### Robot (physical)
+- SmolVLA trained to **loss 0.012**; executes the correct grasp motion at ~20 Hz on MPS.
+- Closed-loop **grasp verification** (torque + width) + **retry on miss** working.
+- **Oryx-guided localization** pre-positions the arm above the object before the policy's final grasp.
 
-### Engineering experiments / findings
-| Finding | Evidence | Fix we built |
-|---|---|---|
-| Native tool-calling non-functional | `tools` accepted, `tool_calls` always `[]`, model just chats | JSON-action protocol + `response_format=json_object` + few-shot |
-| **Safety filter false-positives** | benign requests intermittently → `HTTP 400 content_filter` | retry-with-backoff in the agent loop |
-| **ASR mangles brand names** | "عطر ديور" → ASR "عِطراديور"; that garbled token then trips the content filter **8/8** | `normalize.py` (strip diacritics + alias-map to catalog) **before** Fanar — fixed 0/8 → working |
-| Shared, low rate limits | 429 across ASR/TTS/chat under iterative testing | TTS disk-cache, fixed-phrase audio via device voice, fewer agent calls |
-
-YOLO-World perception verified on a test image (correctly detected real objects; returned `[]` when target items absent).
-
----
-
-## 6. Recommendations for future Fanar improvements
-
-1. **Make function/tool-calling actually emit `tool_calls`.** The endpoint accepts `tools` but never returns calls, forcing every agent team into a brittle JSON-protocol workaround. Native, reliable tool-calling would be the single biggest agentic-DX win.
-2. **Reduce safety-filter false positives on benign Arabic**, and/or expose the trigger + a `safe_mode`/severity setting. Today it intermittently blocks innocuous requests ("give me the perfume"), which is fatal for a deterministic agent.
-3. **Aura ASR: entity/brand robustness + a diacritics toggle.** ASR fuses multi-word entities ("عطر ديور"→"عِطراديور") and returns heavy diacritics; both destabilize downstream LLM parsing. An option for plain (un-diacritized) output and better named-entity handling would help.
-4. **Clearer, higher, per-capability rate limits + `Retry-After` headers.** A single low shared quota across chat/ASR/TTS makes live multimodal demos impractical; 429s carry no backoff hint.
-5. **Ship a Fanar-native VLA checkpoint** (built on `Fanar-Oryx`) that's fine-tunable in the LeRobot format — this would let teams build a *genuine* Fanar VLA instead of pairing Fanar with a third-party policy.
-6. **Minor API compatibility:** `GET /models` returns results under a `"models"` key instead of OpenAI's `"data"`, breaking drop-in OpenAI SDK usage. Aligning would ease adoption.
+### Engineering findings (and the fixes we built)
+| Finding | Fix |
+|---|---|
+| Native tool-calling non-functional (`tool_calls` always `[]`) | JSON-action protocol + `response_format=json_object` + few-shot |
+| Safety-filter false-positives on benign Arabic | retry-with-backoff in the agent loop |
+| ASR mangles brand names / diacritics → trips filter | `normalize.py` (strip diacritics + alias-map) **before** Fanar |
+| YOLO-World can't tell look-alike cosmetics apart | switched perception to **Fanar-Oryx** (reads labels) |
+| SmolVLA feature-mismatch (3 cams vs 1) | train with `--policy.type=smolvla` (build config from dataset) |
+| Deploy on Mac: processors saved with `cuda` | override processor device to `mps`/`cpu` at load |
+| Policy localizes imprecisely on thin data | **Oryx-guided pre-positioning** (hybrid grasp) |
 
 ---
 
-## 7. Setup & run
+## 8. Setup & run
 
-### Prerequisites
-- Python env with deps: `pip install -r requirements.txt` (FastAPI, requests, python-dotenv, python-multipart, ultralytics, etc.)
-- A Fanar API key.
-
-### Configure
+### Install
 ```bash
-cp .env.example .env      # then fill in:
-# FANAR_API_KEY=...        FANAR_MODEL=Fanar-C-2-27B
+pip install -r requirements.txt
+cp .env.example .env     # fill FANAR_API_KEY=...  FANAR_MODEL=Fanar-C-2-27B
 ```
 
-### Run (laptop)
+### Voice / agent demo (laptop)
 ```bash
-# software demo (stub robot, real Fanar+Aura+YOLO):
-python server.py
+python server.py                      # software demo (stub robot, real Fanar+Aura+Oryx)
 # open http://localhost:8080
-
-# with real camera perception:
-BASEER_VISION=1 python server.py
-
-# for the phone over HTTPS (mic needs a secure context):
-PORT=8443 BASEER_CERT=certs/cert.pem BASEER_KEY=certs/key.pem python server.py
-# phone → https://<laptop-ip>:8443   (accept the self-signed cert)
+BASEER_PERCEIVE=oryx python server.py # real camera perception via Fanar-Oryx
 ```
 
-### Robot (offline, see `baseer_record/`)
+### Robot — train the policy (offline, GPU box)
 ```bash
-# record demonstrations, then train the policy on a GPU box:
-./baseer_record/record_water.sh        # teleop + record
-./baseer_record/train_water.sh         # lerobot-train --policy.type=act (or smolvla)
+# 1. record demos (see baseer_record/RECORDING_GUIDE.md)
+lerobot-record --robot.type=so100_follower ... --dataset.single_task="Pick up the hair serum ..."
+# 2. train SmolVLA
+lerobot-train --dataset.root=<dataset> --policy.type=smolvla --policy.device=cuda \
+              --batch_size=32 --steps=20000 --output_dir=outputs/train/baseer_serums
+```
+
+### Robot — deploy the grasp (laptop with the arm)
+```bash
+# one-time calibration (arm only):
+python calibrate_grasp.py        --port <follower> --id follower_so100   # grasp_cfg.json
+python save_delivery_pose.py     --port <follower> --id follower_so100   # delivery_pose.json
+python calibrate_localization.py --port <follower> --id follower_so100   # localization_map.json
+
+# run the full localize → grasp → retry → deliver:
+python grasp.py --policy ~/baseer/policy_vla/pretrained_model \
+  --port <follower> --id follower_so100 \
+  --task "Pick up the hair serum and place it in the delivery zone" \
+  --item "سيروم الشعر" --attempts 3
 ```
 
 ---
 
-## 8. Repository structure
+## 9. Repository structure
 ```
 baseer/
-  server.py        FastAPI host: /command-audio, /tts, /command  (+ logging, TTS cache)
-  agent.py         the ReAct agent loop (JSON-action protocol, retries)
-  prompts.py       system prompt + hard rules
-  tools.py         action space: perceive_scene / deliver / say
-  fanar.py         Fanar chat client + Aura transcribe/synthesize
-  normalize.py     ASR post-correction (diacritics + entity aliases)
-  vision.py        YOLO-World perception
-  web/index.html   phone UI (tap-and-hold, audio in/out, accessibility)
-  test_agent.py    offline agent tests (no API key needed)
-  baseer_record/   robot: record + train scripts, phone record-control panel
+  server.py                 FastAPI host: /command-audio, /tts, /command  (+ sessions, TTS cache)
+  agent.py                  ReAct agent loop (JSON-action protocol, retries, disambiguation)
+  prompts.py                system prompt + hard rules
+  tools.py                  action space: perceive_scene / deliver / say / ask  (+ product registry)
+  fanar.py                  Fanar chat + Aura ASR/TTS + Oryx describe_scene / locate_scene
+  normalize.py              ASR post-correction (diacritics + entity aliases)
+  vision.py                 YOLO-World perception (alternative eyes)
+  grasp.py                  localize → SmolVLA grasp → torque/width verify → retry → deliver
+  calibrate_grasp.py        learn empty-vs-holding gripper thresholds  → grasp_cfg.json
+  calibrate_localization.py learn pixel → hover-pose map               → localization_map.json
+  save_delivery_pose.py     record the fixed hand-off trajectory       → delivery_pose.json
+  capture_policy_view.py    save exactly what the policy sees (debug the camera view)
+  check_state_match.py      compare live joints to the training distribution
+  web/index.html            phone UI (tap-and-hold, audio in/out, VoiceOver-friendly)
+  baseer_record/            record + train scripts, RECORDING_GUIDE.md
+  docs/index.html           project page (GitHub Pages)
 ```
 
-## 9. Status
-The full **software spine is working** on the real stack: Aura ASR → Fanar dialect reasoning → YOLO grounding → graceful failure → Aura TTS, with accessibility (VoiceOver) and rate-limit resilience. The one remaining real piece is training the motion policy so `deliver` physically grasps (`baseer_record/`).
+---
+
+## 10. Future Fanar improvements
+1. **Make tool-calling actually emit `tool_calls`** — the endpoint accepts `tools` but never returns calls, forcing a JSON-protocol workaround.
+2. **Reduce safety-filter false-positives** on benign Arabic; expose the trigger / a severity setting.
+3. **Aura ASR entity & diacritics robustness** — it fuses multi-word brands ("عطر ديور"→"عِطراديور") and over-diacritizes; both destabilize downstream parsing.
+4. **Clearer, higher per-capability rate limits + `Retry-After`** — one low shared quota across chat/ASR/TTS makes live demos hard.
+5. **Ship a Fanar-native VLA checkpoint** (on `Fanar-Oryx`) fine-tunable in LeRobot format, so teams build a *genuine* Fanar VLA.
 
 ---
 
