@@ -151,13 +151,13 @@ USER:    سيروم الشعر
   <pre># voice / agent demo (laptop)
 pip install -r requirements.txt
 cp .env.example .env          # FANAR_API_KEY=...
-BASEER_PERCEIVE=oryx python server.py   →  http://localhost:8080
+cd backend && BASEER_PERCEIVE=oryx python server.py   →  http://localhost:8080
 
 # deploy the grasp (laptop with the SO-100)
-python calibrate_grasp.py        --port &lt;follower&gt; --id follower_so100
-python save_delivery_pose.py     --port &lt;follower&gt; --id follower_so100
-python calibrate_localization.py --port &lt;follower&gt; --id follower_so100
-python grasp.py --policy ~/baseer/policy_vla/pretrained_model \
+python backend/robot/calibrate_grasp.py        --port &lt;follower&gt; --id follower_so100
+python backend/robot/save_delivery_pose.py     --port &lt;follower&gt; --id follower_so100
+python backend/robot/calibrate_localization.py --port &lt;follower&gt; --id follower_so100
+python backend/agent/agent4_grasp.py --policy ~/baseer/policy_vla/pretrained_model \
   --task "Pick up the hair serum and place it in the delivery zone" \
   --item "سيروم الشعر" --attempts 3</pre>
 </section>

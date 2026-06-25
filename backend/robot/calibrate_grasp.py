@@ -26,7 +26,7 @@ import time
 
 from lerobot.robots.so_follower import SO100Follower, SO100FollowerConfig
 
-CFG_PATH = os.path.join(os.path.dirname(__file__), "grasp_cfg.json")
+CFG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "grasp_cfg.json")  # backend/
 
 
 def _read(robot, key):

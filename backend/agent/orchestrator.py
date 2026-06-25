@@ -7,11 +7,16 @@ re-runs the turn in JSON-action mode.
 
 Run it:
     export FANAR_API_KEY=...        # and FANAR_MODEL if needed
-    python agent.py "ناولني القهوة"
+    python backend/agent/orchestrator.py "ناولني القهوة"
 """
 import json
+import os
+import sys
 
-from fanar import FanarClient, FanarError
+# allow running this file directly + importing sibling backend modules (tools, prompts)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # backend/ on path
+
+from agent.agent1_reasoning import FanarClient, FanarError
 from tools import TOOLS, run_tool
 from prompts import build_system_prompt
 

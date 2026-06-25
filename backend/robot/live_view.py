@@ -12,10 +12,12 @@ Note: OpenCV windows can't render Arabic, so detection results print in the
 terminal (Arabic shows correctly there); the window shows the live feed + status.
 """
 import os
+import sys
 
 import cv2
 
-from fanar import describe_scene
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # backend/ on path
+from agent.agent3_vision import describe_scene
 from tools import SCENE_ITEMS
 
 idx = int(os.environ.get("BASEER_CAM_INDEX", "0"))

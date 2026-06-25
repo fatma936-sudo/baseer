@@ -194,9 +194,11 @@ cp .env.example .env     # fill FANAR_API_KEY=...  FANAR_MODEL=Fanar-C-2-27B
 
 ### Voice / agent demo (laptop)
 ```bash
+cd backend
 python server.py                      # software demo (stub robot, real Fanar+Aura+Oryx)
 # open http://localhost:8080
 BASEER_PERCEIVE=oryx python server.py # real camera perception via Fanar-Oryx
+python test_agent.py                  # offline agent tests (no API key needed)
 ```
 
 ### Robot — train the policy (offline, GPU box)
@@ -211,12 +213,12 @@ lerobot-train --dataset.root=<dataset> --policy.type=smolvla --policy.device=cud
 ### Robot — deploy the grasp (laptop with the arm)
 ```bash
 # one-time calibration (arm only):
-python calibrate_grasp.py        --port <follower> --id follower_so100   # grasp_cfg.json
-python save_delivery_pose.py     --port <follower> --id follower_so100   # delivery_pose.json
-python calibrate_localization.py --port <follower> --id follower_so100   # localization_map.json
+python backend/robot/calibrate_grasp.py        --port <follower> --id follower_so100  # grasp_cfg.json
+python backend/robot/save_delivery_pose.py     --port <follower> --id follower_so100  # delivery_pose.json
+python backend/robot/calibrate_localization.py --port <follower> --id follower_so100  # localization_map.json
 
-# run the full localize → grasp → retry → deliver:
-python grasp.py --policy ~/baseer/policy_vla/pretrained_model \
+# run the full localize → grasp → retry → deliver (agent 4 = SmolVLA):
+python backend/agent/agent4_grasp.py --policy ~/baseer/policy_vla/pretrained_model \
   --port <follower> --id follower_so100 \
   --task "Pick up the hair serum and place it in the delivery zone" \
   --item "سيروم الشعر" --attempts 3
@@ -225,24 +227,38 @@ python grasp.py --policy ~/baseer/policy_vla/pretrained_model \
 ---
 
 ## 9. Repository structure
+
+Organized into **`GUI/`** (frontend), **`backend/`** (server + logic), with the model
+calls grouped under **`backend/agent/`** — one module per model ("agent 1, 2, …").
+
 ```
 baseer/
-  server.py                 FastAPI host: /command-audio, /tts, /command  (+ sessions, TTS cache)
-  agent.py                  ReAct agent loop (JSON-action protocol, retries, disambiguation)
-  prompts.py                system prompt + hard rules
-  tools.py                  action space: perceive_scene / deliver / say / ask  (+ product registry)
-  fanar.py                  Fanar chat + Aura ASR/TTS + Oryx describe_scene / locate_scene
-  normalize.py              ASR post-correction (diacritics + entity aliases)
-  vision.py                 YOLO-World perception (alternative eyes)
-  grasp.py                  localize → SmolVLA grasp → torque/width verify → retry → deliver
-  calibrate_grasp.py        learn empty-vs-holding gripper thresholds  → grasp_cfg.json
-  calibrate_localization.py learn pixel → hover-pose map               → localization_map.json
-  save_delivery_pose.py     record the fixed hand-off trajectory       → delivery_pose.json
-  capture_policy_view.py    save exactly what the policy sees (debug the camera view)
-  check_state_match.py      compare live joints to the training distribution
-  web/index.html            phone UI (tap-and-hold, audio in/out, VoiceOver-friendly)
-  baseer_record/            record + train scripts, RECORDING_GUIDE.md
-  docs/index.html           project page (GitHub Pages)
+├── GUI/
+│   └── index.html              phone UI (tap-and-hold, audio in/out, VoiceOver-friendly)
+├── backend/
+│   ├── server.py               FastAPI host: /command-audio, /tts, /command (+ sessions, TTS cache)
+│   ├── tools.py                action space: perceive_scene / deliver / say / ask (+ product registry)
+│   ├── prompts.py              system prompt + hard rules
+│   ├── normalize.py            ASR post-correction (diacritics + entity aliases)
+│   ├── test_agent.py           offline agent tests (no API key needed)
+│   ├── agent/                  ── the per-model "agents" ──
+│   │   ├── fanar_base.py       shared Fanar transport (base URL, key, model ids, errors)
+│   │   ├── agent1_reasoning.py  Fanar-C-2-27B  — the brain / decision-maker
+│   │   ├── agent2_voice.py      Aura ASR + TTS — hear + speak Arabic
+│   │   ├── agent3_vision.py     Fanar-Oryx     — identify + localize items
+│   │   ├── agent4_grasp.py      SmolVLA        — localize → grasp → verify → retry → deliver
+│   │   ├── agent5_yolo.py       YOLO-World     — alternative local eyes
+│   │   └── orchestrator.py     the ReAct loop that drives agent1 to choose tools
+│   └── robot/                  ── arm calibration + camera utilities ──
+│       ├── calibrate_grasp.py        empty-vs-holding gripper thresholds → grasp_cfg.json
+│       ├── calibrate_localization.py pixel → hover-pose map              → localization_map.json
+│       ├── save_delivery_pose.py     fixed hand-off trajectory           → delivery_pose.json
+│       ├── capture_policy_view.py    save exactly what the policy sees (debug the camera view)
+│       ├── check_state_match.py      compare live joints to the training distribution
+│       └── live_view.py / oryx_view.py / capture.py / match_camera.py
+├── baseer_record/              record + train scripts, RECORDING_GUIDE.md
+├── docs/index.html             project page (GitHub Pages)
+└── README.md · requirements.txt · .env.example
 ```
 
 ---

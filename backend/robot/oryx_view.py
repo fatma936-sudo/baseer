@@ -14,11 +14,13 @@ seconds (default 6) — mind your rate limit. Run this standalone (not while the
 server is also using the camera).
 """
 import os
+import sys
 import time
 
 import cv2
 
-from fanar import locate_scene
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # backend/ on path
+from agent.agent3_vision import locate_scene
 from tools import PRODUCTS
 
 idx = int(os.environ.get("BASEER_CAM_INDEX", "0"))

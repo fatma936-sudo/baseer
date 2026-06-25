@@ -40,8 +40,9 @@ def perceive_scene():
 
     if backend == "oryx":
         try:
-            import cv2, vision
-            from fanar import describe_scene
+            import cv2
+            from agent import agent5_yolo as vision
+            from agent.agent3_vision import describe_scene
             _ok, buf = cv2.imencode(".jpg", vision.capture_frame())
             items = describe_scene(buf.tobytes(), PRODUCTS)   # registry-grounded (brand + color)
             print(f"  [tool] perceive_scene() [Fanar-Oryx] -> {items}")
@@ -50,7 +51,7 @@ def perceive_scene():
             print(f"  [tool] perceive_scene() oryx failed ({e}); using stub list")
     elif backend == "yolo":
         try:
-            import vision
+            from agent import agent5_yolo as vision
             items = vision.perceive()
             print(f"  [tool] perceive_scene() [YOLO] -> {items}")
             return {"items": items}
@@ -73,7 +74,7 @@ _GRASP = None  # lazily-built, reused GraspController (keeps one robot connectio
 def _grasp_controller():
     global _GRASP
     if _GRASP is None:
-        from grasp import GraspController
+        from agent.agent4_grasp import GraspController
         _GRASP = GraspController(
             policy_path=os.environ.get("BASEER_POLICY", "~/baseer/policy_vla/pretrained_model"),
             port=os.environ.get("BASEER_FOLLOWER_PORT", "/dev/tty.usbmodem5AB90677591"),

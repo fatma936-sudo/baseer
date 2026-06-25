@@ -21,7 +21,7 @@ import os
 
 from lerobot.robots.so_follower import SO100Follower, SO100FollowerConfig
 
-OUT = os.path.join(os.path.dirname(__file__), "delivery_pose.json")
+OUT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "delivery_pose.json")  # backend/
 
 
 def main():

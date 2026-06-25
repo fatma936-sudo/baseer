@@ -5,9 +5,12 @@ Aura rate limit again. Run ONCE after your Fanar quota resets:
     /opt/anaconda3/envs/lerobot/bin/python prewarm_tts.py
 """
 import os
+import sys
 import hashlib
 
-from fanar import synthesize, FanarError
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # backend/ on path
+from agent.agent2_voice import synthesize
+from agent.fanar_base import FanarError
 
 TTS_CACHE = os.path.join(os.path.dirname(__file__), "tts_cache")
 os.makedirs(TTS_CACHE, exist_ok=True)

@@ -32,7 +32,7 @@ import numpy as np
 from lerobot.cameras.opencv import OpenCVCameraConfig
 from lerobot.robots.so_follower import SO100Follower, SO100FollowerConfig
 
-OUT = os.path.join(os.path.dirname(__file__), "localization_map.json")
+OUT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "localization_map.json")  # backend/
 KEYS = ["shoulder_pan.pos", "shoulder_lift.pos", "elbow_flex.pos",
         "wrist_flex.pos", "wrist_roll.pos", "gripper.pos"]
 W, H = 640, 480

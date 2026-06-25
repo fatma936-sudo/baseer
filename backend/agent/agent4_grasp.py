@@ -34,10 +34,15 @@ Or import GraspController and call .pick(task) from the agent's deliver().
 import argparse
 import json
 import os
+import sys
 import time
 
 import numpy as np
 import torch
+
+# allow `python backend/agent/agent4_grasp.py ...` + importing sibling backend modules
+_BACKEND = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # backend/
+sys.path.insert(0, _BACKEND)
 
 from lerobot.cameras.opencv import OpenCVCameraConfig
 from lerobot.common.control_utils import predict_action
@@ -47,9 +52,10 @@ from lerobot.robots.so_follower import SO100Follower, SO100FollowerConfig
 from lerobot.utils.constants import OBS_STR
 from lerobot.utils.feature_utils import build_dataset_frame, hw_to_dataset_features
 
-CFG_PATH = os.path.join(os.path.dirname(__file__), "grasp_cfg.json")
-DELIVERY_PATH = os.path.join(os.path.dirname(__file__), "delivery_pose.json")
-LOCALIZATION_PATH = os.path.join(os.path.dirname(__file__), "localization_map.json")
+# calibration artifacts live at the backend/ root (shared with backend/robot/ scripts)
+CFG_PATH = os.path.join(_BACKEND, "grasp_cfg.json")
+DELIVERY_PATH = os.path.join(_BACKEND, "delivery_pose.json")
+LOCALIZATION_PATH = os.path.join(_BACKEND, "localization_map.json")
 
 # Conservative fallbacks if calibrate_grasp.py hasn't been run yet.
 _DEFAULTS = {
@@ -261,7 +267,7 @@ class GraspController:
             return None  # unknown / disabled -> caller ignores it
         try:
             import cv2
-            from fanar import describe_scene
+            from agent.agent3_vision import describe_scene
             import tools as T
             frame = self.robot.get_observation().get("front")
             if frame is None:
@@ -282,7 +288,7 @@ class GraspController:
         pixel (u, v), or None if not found / vision unavailable."""
         try:
             import cv2
-            from fanar import locate_scene
+            from agent.agent3_vision import locate_scene
             import tools as T
             frame = np.asarray(self.robot.get_observation()["front"])
             ok, buf = cv2.imencode(".jpg", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))

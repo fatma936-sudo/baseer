@@ -10,7 +10,7 @@ import sys
 
 import cv2
 
-from fanar import describe_scene
+from agent.agent3_vision import describe_scene
 from tools import SCENE_ITEMS
 
 src = sys.argv[1] if len(sys.argv) > 1 else None
@@ -18,7 +18,7 @@ if src:
     image_bytes = open(src, "rb").read()
     print(f"image  : {src}")
 else:
-    import vision
+    from agent import agent5_yolo as vision
     _ok, buf = cv2.imencode(".jpg", vision.capture_frame())
     image_bytes = buf.tobytes()
     print("image  : live camera frame")

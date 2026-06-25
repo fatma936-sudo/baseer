@@ -22,8 +22,9 @@ from pathlib import Path
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, FileResponse, Response
 
-from agent import run as agent_run
-from fanar import FanarClient, FanarError, synthesize, transcribe
+from agent.orchestrator import run as agent_run
+from agent.agent1_reasoning import FanarClient, FanarError
+from agent.agent2_voice import synthesize, transcribe
 from normalize import normalize_command
 import tools as T
 
@@ -52,7 +53,7 @@ def log_turn(audio, raw, normalized, reply):
     print(f"[log] raw={raw!r} -> norm={normalized!r} | reply={reply!r}")
 
 app = FastAPI()
-WEB = Path(__file__).parent / "web"
+WEB = Path(__file__).parent.parent / "GUI"   # repo_root/GUI
 
 
 # --- DEV MOCK (used only when FANAR_API_KEY is not set) ---------------------
