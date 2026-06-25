@@ -213,7 +213,12 @@ class GraspController:
         last_log = t0
         while time.perf_counter() - t0 < max_seconds:
             loop_t = time.perf_counter()
-            obs = self.robot.get_observation()
+            try:
+                obs = self.robot.get_observation()    # skip transient camera hiccups, don't crash
+            except Exception as e:
+                print(f"[grasp] camera hiccup, skipping frame: {e}")
+                time.sleep(0.03)
+                continue
             # aggregate per-motor floats + camera into the dataset-frame the policy expects
             obs_frame = build_dataset_frame(self.obs_features, obs, prefix=OBS_STR)
             it = time.perf_counter()
