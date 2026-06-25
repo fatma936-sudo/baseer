@@ -4,33 +4,38 @@ Fanar-Oryx locates in the camera image. This is the "localization" layer: it lea
 directly from the fixed camera + fixed table, where to move the arm for any object
 pixel — no camera extrinsics or IK tuning needed.
 
-HOW IT WORKS: torque is OFF so you move the arm by hand. For ~12 spots across the
-table you (1) CLICK the object's center in the camera window, then (2) hand-pose the
-arm hovering just above that object in a ready-to-grasp pose and press 's' to capture
-the joints. We then fit a smooth quadratic map (u,v) -> 6 joint angles and save it to
-localization_map.json, which grasp.py uses to pre-position before the policy grasps.
+HOW IT WORKS (teleoperation — same as recording): you drive the FOLLOWER with the
+LEADER arm. For ~12 spots across the table you (1) CLICK the object's center in the
+camera window, then (2) teleop the arm to hover just above that object in a ready-to-
+grasp pose and press 's' to capture the joints. We then fit a smooth quadratic map
+(u,v) -> 6 joint angles and save it to localization_map.json, which agent4_grasp.py
+uses to pre-position before the policy grasps.
 
-    /opt/anaconda3/envs/lerobot/bin/python calibrate_localization.py \
-        --port /dev/tty.usbmodem5AB90677591 --id follower_so100 --cam 0
+ONE object, moved to ~12 different positions (near/far, left/center/right). Each spot =
+one sample (click + hover + 's'). After ~12 samples press 'q' to fit.
+
+    python backend/robot/calibrate_localization.py \
+        --port /dev/tty.usbmodem5AB90677591 --id follower_so100 \
+        --leader-port /dev/tty.usbmodem5AB90674941 --leader-id leader_so100 --cam 0
 
 Controls (focus the camera window):
-  click   = mark the object's center (do this BEFORE pressing s)
-  s       = save a sample (current click + current joints)
-  u       = undo last sample
-  q       = finish and fit the map  (need >= 8 samples)
-
-Tip: spread the spots — near/far, left/right/center — to cover the whole reachable
-table. Put the arm in the SAME top-down grasp orientation each time, just translated.
+  drive the LEADER arm  = the follower mirrors it (teleoperation)
+  click                 = mark the object's center (do this BEFORE pressing s)
+  s                     = save a sample (current click + current follower joints)
+  u                     = undo last sample
+  q                     = finish and fit the map  (need >= 8 samples)
 """
 import argparse
 import json
 import os
+import time
 
 import cv2
 import numpy as np
 
 from lerobot.cameras.opencv import OpenCVCameraConfig
 from lerobot.robots.so_follower import SO100Follower, SO100FollowerConfig
+from lerobot.teleoperators.so_leader import SO100Leader, SO100LeaderConfig
 
 OUT = os.path.join(os.path.dirname(os.path.dirname(__file__)), "localization_map.json")  # backend/
 KEYS = ["shoulder_pan.pos", "shoulder_lift.pos", "elbow_flex.pos",
@@ -52,22 +57,28 @@ def feats(u, v):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", required=True)
+    ap.add_argument("--port", required=True, help="follower port")
     ap.add_argument("--id", default="follower_so100")
+    ap.add_argument("--leader-port", required=True, help="leader (teleop) port")
+    ap.add_argument("--leader-id", default="leader_so100")
     ap.add_argument("--cam", type=int, default=0)
     args = ap.parse_args()
 
     cams = {"front": OpenCVCameraConfig(index_or_path=args.cam, width=W, height=H, fps=30)}
     robot = SO100Follower(SO100FollowerConfig(port=args.port, id=args.id, cameras=cams))
+    leader = SO100Leader(SO100LeaderConfig(port=args.leader_port, id=args.leader_id))
     robot.connect()
-    robot.bus.disable_torque()                 # move the arm by hand
+    leader.connect()
     cv2.namedWindow("localization calib")
     cv2.setMouseCallback("localization calib", on_mouse)
-    print("Torque OFF. For each spot: CLICK the object, hover the arm above it, press 's'.")
+    print("Teleop ON: move the LEADER arm to drive the follower.")
+    print("For each spot: CLICK the object, hover the arm above it, press 's'.  q=fit")
 
     samples = []   # list of (u_px, v_px, [6 joints])
     try:
         while True:
+            action = leader.get_action()          # teleoperate: leader drives follower
+            robot.send_action(action)
             obs = robot.get_observation()
             img = np.asarray(obs["front"])
             disp = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
@@ -75,7 +86,7 @@ def main():
                 cv2.circle(disp, click["uv"], 6, (0, 0, 255), 2)
             for (u, v, _) in samples:
                 cv2.circle(disp, (int(u), int(v)), 4, (0, 255, 0), -1)
-            cv2.putText(disp, f"samples={len(samples)}  click obj, then 's'. q=fit",
+            cv2.putText(disp, f"samples={len(samples)}  click obj, hover, 's'.  q=fit",
                         (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
             cv2.imshow("localization calib", disp)
             k = cv2.waitKey(1) & 0xFF
@@ -91,8 +102,9 @@ def main():
                 samples.append((u, v, joints))
                 print(f"  saved #{len(samples)}: px=({u},{v}) joints={[round(x,1) for x in joints]}")
                 click["uv"] = None
+            time.sleep(0.02)
     finally:
-        robot.bus.enable_torque()
+        leader.disconnect()
         robot.disconnect()
         cv2.destroyAllWindows()
 
@@ -111,7 +123,7 @@ def main():
     json.dump({"W": W, "H": H, "keys": KEYS, "coeffs": coeffs.tolist(),
                "n_samples": len(samples)}, open(OUT, "w"), indent=2)
     print(f"wrote {OUT}  ({len(samples)} samples)")
-    print("Now grasp.py can pre-position above an Oryx-located object before grasping.")
+    print("Now agent4_grasp.py can pre-position above an Oryx-located object before grasping.")
 
 
 if __name__ == "__main__":
