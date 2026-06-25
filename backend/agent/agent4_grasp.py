@@ -318,7 +318,12 @@ class GraspController:
     def prereach(self, item_name):
         """Pre-position the arm above the Oryx-located object (gripper open), so the
         policy only has to do the short final descent+grasp. Returns True if it moved."""
-        if not self.loc_map or not item_name:
+        if not self.loc_map:
+            print("[grasp] NO localization map — skipping pre-position (policy runs alone). "
+                  "Run backend/robot/calibrate_localization.py to enable localization.")
+            return False
+        if not item_name:
+            print("[grasp] no --item given — skipping localization (pass e.g. --item 'سيروم الشعر').")
             return False
         uv = self._locate_pixel(item_name)
         if uv is None:
