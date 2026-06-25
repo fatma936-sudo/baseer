@@ -30,3 +30,6 @@ ref_view.jpg
 *.log
 viz/
 *.rrd
+
+# eval outputs
+results/
