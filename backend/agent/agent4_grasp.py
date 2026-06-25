@@ -205,7 +205,7 @@ class GraspController:
         self.policy.reset()
         debug = os.environ.get("BASEER_GRASP_DEBUG") == "1"
         opened_seen = False
-        closed_since = None
+        grip_hist = []          # recent (t, gripper_pos) while policy commands a close
         t0 = time.perf_counter()
         n = 0
         infer_t_sum = 0.0
@@ -233,6 +233,7 @@ class GraspController:
             n += 1
 
             g = float(obs.get("gripper.pos", self.cfg["gripper_open_cmd"]))
+            g_cmd = action_dict["gripper.pos"]
 
             # --- diagnostics: ~1/s, show loop rate, arm motion, gripper, target ---
             if debug and time.perf_counter() - last_log >= 1.0:
@@ -246,15 +247,24 @@ class GraspController:
                       f"opened_seen={opened_seen}")
                 last_log = time.perf_counter()
 
-            # watch the gripper to find the grasp moment
+            # Detect the grasp moment. A HELD object keeps the gripper open at its width
+            # (~held_pos) even while the policy commands it shut — so we must NOT wait for
+            # the gripper to reach fully-closed. Instead: once the policy COMMANDS a close
+            # and the gripper position SETTLES, judge with grasp_ok (pos + current).
             if grasp_check_after_close:
-                if g > self.cfg["pos_threshold"] + 10:
+                if g > self.cfg["pos_threshold"] + 15:
                     opened_seen = True
-                if opened_seen and g < self.cfg["pos_threshold"] + 4:
-                    closed_since = closed_since or time.perf_counter()
-                    # let it seat for ~0.4s of continued policy control, then judge
-                    if time.perf_counter() - closed_since > 0.4:
+                closing = g_cmd < self.cfg["pos_threshold"]        # policy wants it shut
+                if opened_seen and closing:
+                    now = time.perf_counter()
+                    grip_hist.append((now, g))
+                    grip_hist = [(t, v) for (t, v) in grip_hist if now - t <= 0.6]
+                    span = now - grip_hist[0][0]
+                    vals = [v for _, v in grip_hist]
+                    if span >= 0.4 and (max(vals) - min(vals)) < 4:  # closed & settled
                         return "held" if self.grasp_ok() else "empty"
+                else:
+                    grip_hist = []        # policy re-opened mid-attempt -> reset
 
             dt = time.perf_counter() - loop_t
             if (sleep := 1.0 / self.fps - dt) > 0:
