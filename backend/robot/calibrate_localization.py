@@ -79,7 +79,12 @@ def main():
         while True:
             action = leader.get_action()          # teleoperate: leader drives follower
             robot.send_action(action)
-            obs = robot.get_observation()
+            try:
+                obs = robot.get_observation()     # transient camera timeouts shouldn't crash us
+            except Exception as e:
+                print(f"[calib] camera hiccup, skipping frame: {e}")
+                time.sleep(0.05)
+                continue
             img = np.asarray(obs["front"])
             disp = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             if click["uv"]:
@@ -107,6 +112,11 @@ def main():
         leader.disconnect()
         robot.disconnect()
         cv2.destroyAllWindows()
+        # always persist raw samples so they're never lost (refit later if needed)
+        if samples:
+            raw = os.path.join(os.path.dirname(OUT), "localization_samples.json")
+            json.dump(samples, open(raw, "w"))
+            print(f"saved {len(samples)} raw samples -> {raw}")
 
     if len(samples) < 8:
         print(f"only {len(samples)} samples — need >= 8 to fit. Nothing saved.")
