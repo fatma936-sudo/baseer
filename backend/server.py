@@ -122,16 +122,41 @@ def _next_sid():
     return uuid.uuid4().hex[:12]
 
 
+import threading
+JOBS = {}   # job_id -> {"done": bool, "reply": confirmation text}
+
+
 def _run_turn(text, session_id):
-    """Run one user turn, continuing a session if one is awaiting an answer."""
+    """Run one user turn. The grasp is DEFERRED (recorded, not executed) so the agent
+    returns fast; the caller runs the grasp in the background and speaks a confirmation."""
     history = SESSIONS.pop(session_id, None) if session_id else None
-    result = agent_run(text, client=get_client(), verbose=False, history=history)
+    T.set_defer(True)
+    try:
+        result = agent_run(text, client=get_client(), verbose=False, history=history)
+    finally:
+        T.set_defer(False)
+    pending = T.pop_pending()
     sid = session_id or _next_sid()
     if result["awaiting"]:
         SESSIONS[sid] = result["messages"]
     else:
         SESSIONS.pop(sid, None)
-    return sid, (result["reply"] or "تم."), result
+    return sid, (result["reply"] or "تم."), result, pending
+
+
+def _start_grasp_job(item, confirm_reply):
+    """Run the real arm grasp in a background thread; store the spoken confirmation for /job."""
+    import uuid
+    job_id = uuid.uuid4().hex[:8]
+    JOBS[job_id] = {"done": False, "reply": ""}
+
+    def _work():
+        res = T.execute_grasp(item)
+        JOBS[job_id] = {"done": True,
+                        "reply": confirm_reply if res.get("ok")
+                        else f"عذراً، ما قدرت أجيب {item}، حاول مرة ثانية"}
+    threading.Thread(target=_work, daemon=True).start()
+    return job_id
 
 
 # --- routes ----------------------------------------------------------------
@@ -147,10 +172,14 @@ async def command(req: Request):
     if not text:
         return JSONResponse({"error": "empty text"}, status_code=400)
     try:
-        sid, reply, result = _run_turn(text, body.get("session_id", ""))
+        sid, reply, result, pending = _run_turn(text, body.get("session_id", ""))
     except FanarError as e:
         print(f"[agent] FAILED: {e}")
         return {"heard": text, "reply": FALLBACK, "awaiting": False, "session_id": body.get("session_id", "")}
+    if pending:
+        job_id = _start_grasp_job(pending, reply)
+        return {"heard": text, "reply": f"دقيقة، أجيب لك {pending}", "job_id": job_id,
+                "awaiting": False, "session_id": sid}
     return {"heard": text, "reply": reply, "awaiting": result["awaiting"],
             "session_id": sid, "actions": result["transcript"]}
 
@@ -192,15 +221,32 @@ async def command_audio(file: UploadFile = File(...), session_id: str = Form("")
         log_turn(audio, raw, text, "")
         return {"heard": "", "reply": NOHEAR, "awaiting": False, "session_id": session_id or ""}
     try:
-        sid, reply, result = _run_turn(text, session_id)
+        sid, reply, result, pending = _run_turn(text, session_id)
     except FanarError as e:
         print(f"[agent] FAILED: {e}")          # logged for us; user hears a clean retry
         log_turn(audio, raw, text, f"ERROR: {e}")
         SESSIONS.pop(session_id, None)          # reset the dialog on failure
         return {"heard": text, "reply": FALLBACK, "awaiting": False, "session_id": session_id or ""}
+    if pending:                                 # two-phase: ack now, grasp in background, confirm via /job
+        job_id = _start_grasp_job(pending, reply)
+        ack = f"دقيقة، أجيب لك {pending}"
+        log_turn(audio, raw, text, ack)
+        return {"heard": text, "raw_asr": raw, "reply": ack, "job_id": job_id,
+                "awaiting": False, "session_id": sid}
     log_turn(audio, raw, text, reply)
     return {"heard": text, "raw_asr": raw, "reply": reply,
             "awaiting": result["awaiting"], "session_id": sid}
+
+
+@app.get("/job/{job_id}")
+def job_status(job_id: str):
+    """Poll a background grasp job: {done, reply}. reply is the spoken confirmation when done."""
+    j = JOBS.get(job_id)
+    if j is None:
+        return {"done": True, "reply": ""}
+    if j["done"]:
+        JOBS.pop(job_id, None)
+    return j
 
 
 if __name__ == "__main__":

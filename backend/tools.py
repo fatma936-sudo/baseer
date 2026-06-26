@@ -89,12 +89,43 @@ def _grasp_controller():
     return _GRASP
 
 
+# --- background-grasp support (two-phase: ack now, grasp in the background) -------
+_DEFER = False     # when True, deliver() only RECORDS the item; the server grasps in a thread
+_PENDING = None    # the item recorded for a deferred grasp
+
+
+def set_defer(flag):
+    global _DEFER
+    _DEFER = bool(flag)
+
+
+def pop_pending():
+    global _PENDING
+    p, _PENDING = _PENDING, None
+    return p
+
+
+def execute_grasp(item):
+    """Actually run the arm grasp+deliver for `item` (blocking). Returns a result dict."""
+    task = GRASP_TASKS.get(item)
+    if task is None:
+        return {"ok": False, "error": "no_policy_for_item", "item": item}
+    try:
+        attempts = int(os.environ.get("BASEER_GRASP_ATTEMPTS", "3"))
+        ok = _grasp_controller().pick(task, attempts=attempts, item_name=item)
+        print(f"  [tool] grasp(item='{item}') -> {'DELIVERED' if ok else 'FAILED after retries'}")
+        return {"ok": ok, "item": item, "error": None if ok else "grasp_failed"}
+    except Exception as e:
+        print(f"  [tool] grasp(item='{item}') error: {e}")
+        return {"ok": False, "error": f"grasp_error:{e}", "item": item}
+
+
 def deliver(item):
     """Pick `item` from the vanity and place it at the fixed delivery zone.
 
-    With BASEER_GRASP=policy, drives the real arm via the closed-loop, retrying
-    GraspController (torque + width verification, re-approach on a miss). Otherwise
-    stays a stub so the voice/agent stack runs without the arm.
+    With BASEER_GRASP=policy: if deferred (server two-phase mode) just RECORD the item and
+    return immediately (the server grasps in the background, speaking an ack then a confirm);
+    otherwise grasp inline. Without BASEER_GRASP it stays a stub (voice stack, no arm).
     """
     if item not in SCENE_ITEMS:
         print(f"  [tool] deliver(item='{item}') -> NOT PRESENT")
@@ -102,18 +133,15 @@ def deliver(item):
                 "available": list(SCENE_ITEMS)}
 
     if os.environ.get("BASEER_GRASP") == "policy":
-        task = GRASP_TASKS.get(item)
-        if task is None:
+        if item not in GRASP_TASKS:
             print(f"  [tool] deliver(item='{item}') -> no trained grasp policy for this item")
             return {"ok": False, "error": "no_policy_for_item", "item": item}
-        try:
-            attempts = int(os.environ.get("BASEER_GRASP_ATTEMPTS", "3"))
-            ok = _grasp_controller().pick(task, attempts=attempts, item_name=item)
-            print(f"  [tool] deliver(item='{item}') -> {'DELIVERED' if ok else 'FAILED after retries'}")
-            return {"ok": ok, "item": item, "error": None if ok else "grasp_failed"}
-        except Exception as e:
-            print(f"  [tool] deliver(item='{item}') grasp error: {e}")
-            return {"ok": False, "error": f"grasp_error:{e}", "item": item}
+        if _DEFER:
+            global _PENDING
+            _PENDING = item
+            print(f"  [tool] deliver(item='{item}') -> deferred (background grasp)")
+            return {"ok": True, "item": item, "deferred": True}
+        return execute_grasp(item)
 
     print(f"  [tool] deliver(item='{item}') -> delivering to zone... (stub)")
     return {"ok": True, "item": item}

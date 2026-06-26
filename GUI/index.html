@@ -99,6 +99,7 @@ async function onRecorded(){
   }
   state='busy'; stage.className='busy'; setStatus("جارٍ المعالجة…","#86868b");
   speak(ACK);                                            // plays during processing (player already unlocked)
+  let keepBusy=false;
   try{
     const fd=new FormData(); fd.append('file', blob, 'command.webm'); fd.append('session_id', SESSION_ID);
     const r=await fetch('/command-audio',{method:'POST',body:fd});
@@ -107,10 +108,26 @@ async function onRecorded(){
     else {
       const hint = data.awaiting ? "  (اضغط وأجب)" : "";
       setStatus("سمعتك: "+data.heard+"  —  "+data.reply+hint,"#1d1d1f");
-      await speak(data.reply);   // if awaiting, this is the question; user presses-and-holds to answer
+      await speak(data.reply);              // ack ("دقيقة...") / question / normal reply
+      if(data.job_id){                       // arm fetching in background -> confirm when done
+        keepBusy=true;
+        setStatus("جارٍ إحضار "+data.heard+"…","#86868b");
+        pollJob(data.job_id);
+      }
     }
   }catch(e){ setStatus("تعذّر الاتصال بالخادم.","#ff3b30"); }
-  finally { state='idle'; stage.className=''; }            // ALWAYS reset -> can record again
+  finally { if(!keepBusy){ state='idle'; stage.className=''; } }   // stay busy until delivery done
+}
+
+async function pollJob(id){
+  for(let i=0;i<160;i++){                     // poll up to ~4 min
+    await new Promise(r=>setTimeout(r,1500));
+    try{
+      const j=await (await fetch('/job/'+id)).json();
+      if(j.done){ if(j.reply){ setStatus(j.reply,"#1d1d1f"); await speak(j.reply); } break; }
+    }catch(e){}
+  }
+  state='idle'; stage.className='';           // re-enable after delivery (or timeout)
 }
 
 stage.addEventListener('pointerdown',(ev)=>{
