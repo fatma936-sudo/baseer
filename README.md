@@ -2,7 +2,7 @@
 
 > *بَصير ≈ "the perceptive one / the one who sees."* The arm becomes the eyes and hands of a blind or hands-occupied person, driven entirely by spoken Arabic.
 
-Baseer lets a user say, in everyday Arabic dialect — *"ناوليني سيروم الشعر"* — and a robot arm **sees** what's actually on the table, **localizes** the item, **grasps** it with a learned policy, **retries if it misses**, **delivers** it to a fixed hand-off zone, and **speaks back in Arabic** to confirm. If the item isn't there, it doesn't guess — it says aloud what *is* available.
+Baseer lets a user say in everyday Arabic dialect — *"ناوليني سيروم الشعر"* — and a robot arm **sees** what's actually on the table, **localizes** the item, **grasps** it with a learned policy, **retries if it misses**, **delivers** it to a fixed hand-off zone, and **speaks back in Arabic** to confirm. If the item isn't there, it doesn't guess — it says aloud what *is* available.
 
 Built for the Fanar hackathon, **Theme 4: Physical AI / Imitation Learning**.
 
