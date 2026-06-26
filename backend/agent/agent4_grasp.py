@@ -56,6 +56,7 @@ from lerobot.utils.feature_utils import build_dataset_frame, hw_to_dataset_featu
 CFG_PATH = os.path.join(_BACKEND, "grasp_cfg.json")
 DELIVERY_PATH = os.path.join(_BACKEND, "delivery_pose.json")
 LOCALIZATION_PATH = os.path.join(_BACKEND, "localization_map.json")
+SLOTS_PATH = os.path.join(_BACKEND, "slots.json")
 
 # Conservative fallbacks if calibrate_grasp.py hasn't been run yet.
 _DEFAULTS = {
@@ -138,8 +139,15 @@ class GraspController:
         self.loc_map = None
         if os.path.exists(LOCALIZATION_PATH):
             self.loc_map = json.load(open(LOCALIZATION_PATH))
-            print(f"[grasp] localization map loaded ({self.loc_map.get('n_samples')} samples) "
-                  f"— will pre-position above the object via Oryx.")
+            print(f"[grasp] localization map loaded ({self.loc_map.get('n_samples')} samples).")
+
+        # FIXED SLOTS (preferred): exact recorded poses; runtime snaps Oryx's detection to
+        # the nearest slot -> reliable type-selection without a fuzzy continuous map.
+        self.slots = None
+        if os.path.exists(SLOTS_PATH):
+            self.slots = json.load(open(SLOTS_PATH))
+            print(f"[grasp] {len(self.slots.get('slots', []))} fixed slots loaded "
+                  f"— will snap to the nearest slot's exact pose.")
 
     # -- low-level gripper feedback ----------------------------------------
     def _gripper(self, field):
@@ -435,17 +443,37 @@ class GraspController:
         pixel->hover localization is opt-in via BASEER_PREREACH=1 while it's being tuned."""
         if os.environ.get("BASEER_PREREACH", "0") != "1":
             print("[grasp] pre-reach OFF (default) — policy runs alone. "
-                  "Set BASEER_PREREACH=1 to enable Oryx pre-positioning (still being tuned).")
-            return False
-        if not self.loc_map:
-            print("[grasp] NO localization map — skipping pre-position (policy runs alone). "
-                  "Run backend/robot/calibrate_localization.py to enable localization.")
+                  "Set BASEER_PREREACH=1 to enable Oryx pre-positioning.")
             return False
         if not item_name:
-            print("[grasp] no --item given — skipping localization (pass e.g. --item 'سيروم الشعر').")
+            print("[grasp] no --item given — skipping (pass e.g. --item 'سيروم الشعر').")
             return False
         uv = self._locate_pixel(item_name)
         if uv is None:
+            return False
+
+        # PREFERRED: snap to the nearest FIXED SLOT's exact recorded pose (reliable).
+        slot_list = (self.slots or {}).get("slots") if self.slots else None
+        if slot_list:
+            su, sv = uv
+            nearest = min(slot_list, key=lambda s: (s["pixel"][0]-su)**2 + (s["pixel"][1]-sv)**2)
+            dist = ((nearest["pixel"][0]-su)**2 + (nearest["pixel"][1]-sv)**2) ** 0.5
+            target = dict(nearest["pose"])
+            target["gripper.pos"] = self.cfg["gripper_open_cmd"]
+            high = dict((self.slots.get("travel_pose")) or self.home_pose)
+            over = {**high, "shoulder_pan.pos": target["shoulder_pan.pos"]}
+            for d in (high, over):
+                d["gripper.pos"] = self.cfg["gripper_open_cmd"]
+            print(f"[grasp] '{item_name}' @ pixel ({round(su)},{round(sv)}) -> nearest SLOT "
+                  f"(pixel {nearest['pixel']}, {dist:.0f}px away). Raise -> over -> descend.")
+            self._glide_to(high, duration_s=1.8)
+            self._glide_to(over, duration_s=1.5)
+            self._glide_to(target, duration_s=1.5)
+            return True
+
+        # fallback: continuous calibrated map (less precise)
+        if not self.loc_map:
+            print("[grasp] no slots and no localization map — skipping pre-position.")
             return False
         target = self._hover_joints(*uv)
         target["gripper.pos"] = self.cfg["gripper_open_cmd"]   # approach with gripper open
