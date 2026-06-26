@@ -78,12 +78,16 @@ def main():
             if k == ord("s"):
                 pose = {key: round(float(obs[key]), 2) for key in KEYS}
                 waypoints.append(pose)
-                print(f"  captured #{len(waypoints)}: shoulder_lift={pose['shoulder_lift.pos']} "
+                json.dump(waypoints, open(OUT, "w"), indent=2)   # save NOW, never lose on a hiccup
+                print(f"  captured #{len(waypoints)} (saved): shoulder_lift={pose['shoulder_lift.pos']} "
                       f"pan={pose['shoulder_pan.pos']} elbow={pose['elbow_flex.pos']}")
             time.sleep(0.02)
     finally:
-        leader.disconnect()
-        robot.disconnect()
+        for name, dev in (("leader", leader), ("robot", robot)):
+            try:
+                dev.disconnect()
+            except Exception as e:
+                print(f"[delivery] {name} disconnect warning (ignored): {e}")
         cv2.destroyAllWindows()
 
     if not waypoints:

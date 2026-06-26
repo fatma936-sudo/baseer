@@ -109,14 +109,17 @@ def main():
                 click["uv"] = None
             time.sleep(0.02)
     finally:
-        leader.disconnect()
-        robot.disconnect()
-        cv2.destroyAllWindows()
-        # always persist raw samples so they're never lost (refit later if needed)
+        # persist raw samples FIRST so a disconnect hiccup can never lose them
         if samples:
             raw = os.path.join(os.path.dirname(OUT), "localization_samples.json")
             json.dump(samples, open(raw, "w"))
             print(f"saved {len(samples)} raw samples -> {raw}")
+        for name, dev in (("leader", leader), ("robot", robot)):
+            try:
+                dev.disconnect()
+            except Exception as e:
+                print(f"[calib] {name} disconnect warning (ignored): {e}")
+        cv2.destroyAllWindows()
 
     if len(samples) < 8:
         print(f"only {len(samples)} samples — need >= 8 to fit. Nothing saved.")
