@@ -263,7 +263,13 @@ baseer/
 
 ---
 
-## 10. Future Fanar improvements
+## 10. Demo mode & future work
+
+**What runs in the live demo (reliable):** voice → Aura ASR → Fanar agent → **Oryx announces** which serums are on the table → **policy grasps** the target (verified by torque + gripper width, with retry) → **scripted delivery** (auto lift-to-clear → set down at the zone) → Aura speaks the confirmation. The requested serum is placed in the grasp area.
+
+**Object-precise localization is future work.** We built Oryx-guided pre-positioning (a calibrated pixel→arm-pose map + top-down approach) to pick the *right* item out of several, but with a **single RGB camera and no depth** the aim is a few cm off — not reliable enough for the demo. The principled fix is a **depth camera or hand-eye IK calibration** (a verified SO-100 URDF + `RobotKinematics`); the hooks are in the repo (`backend/robot/calibrate_localization.py`, `BASEER_PREREACH=1`).
+
+### Future Fanar improvements
 1. **Make tool-calling actually emit `tool_calls`** — the endpoint accepts `tools` but never returns calls, forcing a JSON-protocol workaround.
 2. **Reduce safety-filter false-positives** on benign Arabic; expose the trigger / a severity setting.
 3. **Aura ASR entity & diacritics robustness** — it fuses multi-word brands ("عطر ديور"→"عِطراديور") and over-diacritizes; both destabilize downstream parsing.
