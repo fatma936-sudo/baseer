@@ -357,7 +357,14 @@ class GraspController:
 
     def prereach(self, item_name):
         """Pre-position the arm above the Oryx-located object (gripper open), so the
-        policy only has to do the short final descent+grasp. Returns True if it moved."""
+        policy only has to do the short final descent+grasp. Returns True if it moved.
+
+        Approaches FROM ABOVE — rotates over the target at the raised 'home' height first,
+        then descends — so the gripper doesn't sweep across the table into other objects.
+        Disable entirely with BASEER_PREREACH=0 (policy then runs alone)."""
+        if os.environ.get("BASEER_PREREACH", "1") == "0":
+            print("[grasp] pre-reach DISABLED (BASEER_PREREACH=0) — policy runs alone")
+            return False
         if not self.loc_map:
             print("[grasp] NO localization map — skipping pre-position (policy runs alone). "
                   "Run backend/robot/calibrate_localization.py to enable localization.")
@@ -370,8 +377,14 @@ class GraspController:
             return False
         target = self._hover_joints(*uv)
         target["gripper.pos"] = self.cfg["gripper_open_cmd"]   # approach with gripper open
-        print(f"[grasp] pre-reaching to hover pose above '{item_name}'")
-        self._glide_to(target, duration_s=2.5)
+        # Phase 1: rotate over the target while staying at the raised home height (no table sweep).
+        via = dict(target)
+        for j in ("shoulder_lift.pos", "elbow_flex.pos"):
+            if j in self.home_pose:
+                via[j] = self.home_pose[j]
+        print(f"[grasp] pre-reaching above '{item_name}' (rotate-high then descend)")
+        self._glide_to(via, duration_s=1.8)      # over the target, still raised
+        self._glide_to(target, duration_s=1.5)   # descend straight onto the hover pose
         return True
 
     # -- public: pick with retries -----------------------------------------
