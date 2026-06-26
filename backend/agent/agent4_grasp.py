@@ -241,21 +241,29 @@ class GraspController:
         def held(pose):                       # gripper closed + grasp wrist
             return {**pose, **wrist, "gripper.pos": close}
 
+        delivery_pan = waypoints[-1]["shoulder_pan.pos"]   # the zone DIRECTION (from recording)
+
         # 1) AUTO up-clearance: lift the held object to the high 'travel' pose FIRST so the
         #    carry clears the other items (e.g. perfume) instead of dragging through them.
         travel = (self.loc_map or {}).get("travel_pose")
         if travel:
             print("[grasp] delivery: lifting to travel height to clear obstacles")
             self._glide_to(held(travel), duration_s=2.0)
-        # 2) carry through the saved waypoints (these just bring the arm OVER the zone;
-        #    the exact set-down height is found by feel, not by a precise recording)
+        # 2) carry through the saved waypoints (bring the arm over the zone)
         print(f"[grasp] scripted delivery: {len(waypoints)} waypoints -> zone "
               f"(wrist {'locked to grasp angle' if wrist else 'as recorded'})")
         for i, wp in enumerate(waypoints, 1):
             self._glide_to(held(wp), duration_s=2.0)
             print(f"[grasp]   waypoint {i}/{len(waypoints)} reached")
-        # 3) lower until the object touches the table (torque feedback), then release
-        if os.environ.get("BASEER_SETDOWN_CONTACT", "1") == "1":
+        # 3) SET DOWN at the same arm height/config used to GRASP (that's table level),
+        #    just rotated to the delivery direction -> object placed level on the table.
+        if self.grasp_pose:
+            setdown = held({**self.grasp_pose, "shoulder_pan.pos": delivery_pan})
+            print("[grasp] set-down: matching grasp height at the zone (level placement)")
+            self._glide_to(setdown, duration_s=2.0)
+            if os.environ.get("BASEER_SETDOWN_CONTACT", "0") == "1":
+                self.lower_until_contact()        # optional fine contact if the zone differs in reach
+        else:
             self.lower_until_contact()
         self.open_gripper()                                        # release once resting
         return True
