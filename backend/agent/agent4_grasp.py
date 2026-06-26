@@ -96,6 +96,7 @@ class GraspController:
         self.fps = fps
         self.device = _device()
         self.grasp_pose = None      # joints at the moment of grasp (for level set-down)
+        self._used_slot = False     # set by prereach when it snapped to a fixed slot
         print(f"[grasp] device={self.device}")
 
         # --- robot (reuse an open one if the caller passes it) ---
@@ -441,6 +442,7 @@ class GraspController:
         then descends — so the gripper doesn't sweep across the table into other objects.
         OFF by default (policy runs alone — the behavior that grasped reliably); the
         pixel->hover localization is opt-in via BASEER_PREREACH=1 while it's being tuned."""
+        self._used_slot = False
         if os.environ.get("BASEER_PREREACH", "0") != "1":
             print("[grasp] pre-reach OFF (default) — policy runs alone. "
                   "Set BASEER_PREREACH=1 to enable Oryx pre-positioning.")
@@ -469,6 +471,7 @@ class GraspController:
             self._glide_to(high, duration_s=1.8)
             self._glide_to(over, duration_s=1.5)
             self._glide_to(target, duration_s=1.5)
+            self._used_slot = True       # exact slot pose -> close here (scripted), not the policy
             return True
 
         # fallback: continuous calibrated map (less precise)
@@ -491,6 +494,17 @@ class GraspController:
         self._glide_to(over, duration_s=1.5)     # rotate over the target, still high
         self._glide_to(target, duration_s=1.5)   # descend onto the hover pose
         return True
+
+    def scripted_grasp(self, settle_s=1.2):
+        """Close the gripper at the current (exact slot) pose and judge — used after
+        snapping to a fixed slot, instead of the policy (which is out-of-distribution
+        when started from a slot pose). Returns 'held' or 'empty'."""
+        pose = {k: v for k, v in self.robot.get_observation().items() if k.endswith(".pos")}
+        pose["gripper.pos"] = self.cfg["gripper_close_cmd"]
+        print("[grasp] scripted close at slot pose")
+        self._send_full(pose)
+        time.sleep(settle_s)
+        return "held" if self.grasp_ok() else "empty"
 
     def announce_scene(self):
         """Oryx perception readout: print what's on the table before grasping (the
@@ -521,8 +535,11 @@ class GraspController:
             if i > 1:
                 self.open_gripper()
                 self.go_home()
-            self.prereach(item_name)        # Oryx-localize + move above object (no-op if unavailable)
-            result = self._run_policy(task, attempt_seconds)
+            moved = self.prereach(item_name)   # Oryx-localize + move above object (no-op if unavailable)
+            if moved and self._used_slot:
+                result = self.scripted_grasp()  # exact slot -> close here (policy would be OOD)
+            else:
+                result = self._run_policy(task, attempt_seconds)
             held = result == "held"
             if held:
                 gone = self._object_gone(item_name)        # None if disabled/unknown

@@ -2,12 +2,14 @@
 Record a few FIXED SLOTS for reliable type-selection (no fuzzy localization map).
 
 For each slot you (1) place a serum there, (2) CLICK it in the camera window (where Oryx
-will see it), (3) teleop the arm to the grasp-ready pose over it, (4) press 's'. Do this
-for each spot where a serum will sit (e.g. 2-3 slots). Also press 'h' once with the arm
-raised to set the high 'travel' pose (used to clear obstacles on the way).
+will see it), (3) teleop so the OPEN gripper STRADDLES the object at grasp height — i.e.
+the exact position where simply CLOSING the gripper would grab it (fingers around the
+bottle, not above it) — (4) press 's'. Do this for each spot a serum will sit (2-3 slots).
+Also press 'h' once with the arm raised to set the high 'travel' pose (clears obstacles).
 
-At runtime: Oryx finds the requested serum's pixel -> we snap to the NEAREST recorded slot
--> move to that slot's EXACT pose -> the policy grasps. Exact poses = precise, no map error.
+At runtime: Oryx finds the requested serum's pixel -> snap to the NEAREST recorded slot ->
+move to that exact pose -> CLOSE the gripper (scripted) -> verify -> deliver. Because the
+slot IS the grasp pose, this is precise and reliable (no fuzzy map, no policy drift).
 
     python backend/robot/record_slots.py \
         --port /dev/tty.usbmodem5AB90677591 --id follower_so100 \
@@ -57,8 +59,8 @@ def main():
     leader = SO100Leader(SO100LeaderConfig(port=args.leader_port, id=args.leader_id))
     robot.connect(); leader.connect()
     cv2.namedWindow("record slots"); cv2.setMouseCallback("record slots", on_mouse)
-    print("Teleop ON. For each slot: place a serum, CLICK it, pose the arm grasp-ready, 's'.")
-    print("'h'=set travel pose, 'u'=undo, 'd'=done+save, 'q'=quit.")
+    print("Teleop ON. Per slot: place serum, CLICK it, put the OPEN gripper AROUND it at")
+    print("grasp height (where closing would grab it), press 's'. 'h'=travel pose, 'd'=save.")
 
     slots = []      # [{"pixel":[u,v], "pose":{...}}]
     travel = None
