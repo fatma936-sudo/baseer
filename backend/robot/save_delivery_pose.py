@@ -93,10 +93,15 @@ def main():
     if not waypoints:
         print("No waypoints saved.")
         return
-    # warn if waypoints barely differ (the bug we just hit)
+    # warn if waypoints barely differ (no real motion)
     lifts = [w["shoulder_lift.pos"] for w in waypoints]
     if len(waypoints) >= 2 and (max(lifts) - min(lifts)) < 5:
         print("⚠ WARNING: waypoints barely differ in height — did you move the arm between captures?")
+    # the gripper RELEASES at the last waypoint — it must be the LOW (set-down) pose, not raised
+    if len(waypoints) >= 2 and lifts[-1] > min(lifts) + 8:
+        print(f"⚠ WARNING: last waypoint is RAISED (lift={round(lifts[-1],1)} vs lowest "
+              f"{round(min(lifts),1)}). The object will DROP from there. The LAST capture should "
+              f"reach DOWN to the delivery surface (like a grasp pose). Re-do the final waypoint low.")
     json.dump(waypoints, open(OUT, "w"), indent=2)
     print(f"\nwrote {len(waypoints)} waypoints -> {OUT}")
 
