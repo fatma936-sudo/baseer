@@ -49,12 +49,12 @@ Three tiers, split by a hard constraint: **the robot's USB serial and the camera
 
 **The four "organs":**
 
-| Organ | Technology | Responsibility |
-|---|---|---|
-| **Brain** | `Fanar-C-2-27B` | understand dialect, decide *what* to do, disambiguate, refuse safely |
-| **Eyes** | `Fanar-Oryx-IVU-2` (VLM) | read labels, identify *which* serum, localize *where* it is |
-| **Voice** | Aura ASR + Aura TTS (voice **Noor**) | hear the user, speak back in Arabic |
-| **Muscle** | **SmolVLA** on SO-100 (LeRobot) | physically grasp + deliver, with closed-loop retry |
+|  Model | Task|
+|---|---|
+|`Fanar-C-2-27B` | understand dialect, decide *what* to do, disambiguate, refuse safely |
+|`Fanar-Oryx-IVU-2` (VLM) | read labels, identify *which* serum, localize *where* it is |
+| Aura ASR + Aura TTS (voice **Noor**) | hear the user, speak back in Arabic |
+| **SmolVLA** on SO-100 (LeRobot) | physically grasp + deliver, with closed-loop retry |
 
 ---
 
