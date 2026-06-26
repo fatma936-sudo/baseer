@@ -389,13 +389,30 @@ class GraspController:
         self._glide_to(target, duration_s=1.5)   # descend straight onto the hover pose
         return True
 
+    def announce_scene(self):
+        """Oryx perception readout: print what's on the table before grasping (the
+        'Oryx announces' step). Off via BASEER_ANNOUNCE=0. Does NOT drive motion."""
+        if os.environ.get("BASEER_ANNOUNCE", "1") != "1":
+            return
+        try:
+            import cv2
+            from agent.agent3_vision import describe_scene
+            import tools as T
+            frame = np.asarray(self.robot.get_observation()["front"])
+            ok, buf = cv2.imencode(".jpg", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+            items = describe_scene(buf.tobytes(), T.PRODUCTS)
+            print(f"[oryx] sees on the table: {items if items else '(none recognized)'}")
+        except Exception as e:
+            print(f"[oryx] scene announce skipped: {e}")
+
     # -- public: pick with retries -----------------------------------------
     def pick(self, task, attempts=3, attempt_seconds=25, deliver_seconds=15, item_name=None):
         """Try to grasp (and deliver) up to `attempts` times. Returns True on success.
 
-        Success = torque+width say HELD, AND (if vision enabled) the target is gone
-        from the table. Either signal failing triggers a re-approach.
+        Demo mode: Oryx ANNOUNCES the scene (perception), then the policy grasps on its
+        own (reliable, no pushing). Pre-reach localization is opt-in (BASEER_PREREACH=1).
         """
+        self.announce_scene()
         for i in range(1, attempts + 1):
             print(f"\n[grasp] === attempt {i}/{attempts} ===")
             if i > 1:
