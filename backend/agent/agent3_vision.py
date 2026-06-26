@@ -101,3 +101,49 @@ def locate_scene(image_bytes, width, height, products=None):
         if isinstance(it, dict) and "box" in it and len(it["box"]) == 4:
             out.append({"label": str(it.get("label", "")), "box": [int(v) for v in it["box"]]})
     return out
+
+
+def locate_one(image_bytes, width, height, name, description, samples=3):
+    """FOCUSED, repeated localization of ONE object — more reliable + precise than the
+    all-items query for driving the arm. Asks Oryx for just `name`'s tight box, `samples`
+    times, and returns the MEDIAN center (u, v, n_hits) to smooth VLM variance. None if
+    never found."""
+    import statistics
+    b64 = base64.b64encode(image_bytes).decode()
+    prompt = (
+        f"الصورة عرضها {width} وارتفاعها {height} بكسل. "
+        f"جد فقط هذا الغرض: «{name}» — {description}. "
+        "أعِد إطاراً محيطياً ضيّقاً ودقيقاً متمركزاً تماماً على الغرض نفسه (وليس على ما حوله). "
+        'أعد JSON فقط بالشكل {"box":[x1,y1,x2,y2]} ، وإذا لم يظهر الغرض فأعد {"box":null}.'
+    )
+    payload = {
+        "model": VISION_MODEL,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+        ]}],
+        "temperature": 0.1,
+    }
+    centers = []
+    for _ in range(samples):
+        try:
+            r = requests.post(f"{FANAR_BASE_URL.rstrip('/')}/chat/completions",
+                              headers={**_AUTH, "Content-Type": "application/json"},
+                              json=payload, timeout=120)
+            if r.status_code != 200:
+                continue
+            content = r.json()["choices"][0]["message"]["content"]
+            m = re.search(r"\{.*\}", content, re.S)
+            if not m:
+                continue
+            box = json.loads(m.group(0)).get("box")
+            if box and len(box) == 4:
+                x1, y1, x2, y2 = [float(v) for v in box]
+                centers.append(((x1 + x2) / 2.0, (y1 + y2) / 2.0))
+        except Exception:
+            continue
+    if not centers:
+        return None
+    u = statistics.median(c[0] for c in centers)
+    v = statistics.median(c[1] for c in centers)
+    return (u, v, len(centers))

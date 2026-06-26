@@ -133,9 +133,12 @@ def main():
     rms = np.sqrt(((pred - Y) ** 2).mean(axis=0))
     print("\nfit residual RMS per joint (deg):", [round(float(r), 1) for r in rms])
 
+    us = [u for (u, v, _) in samples]; vs = [v for (u, v, _) in samples]
+    px_range = {"umin": min(us), "umax": max(us), "vmin": min(vs), "vmax": max(vs)}
     json.dump({"W": W, "H": H, "keys": KEYS, "coeffs": coeffs.tolist(),
-               "n_samples": len(samples)}, open(OUT, "w"), indent=2)
-    print(f"wrote {OUT}  ({len(samples)} samples)")
+               "n_samples": len(samples), "px_range": px_range}, open(OUT, "w"), indent=2)
+    print(f"wrote {OUT}  ({len(samples)} samples, covered u[{px_range['umin']}-{px_range['umax']}] "
+          f"v[{px_range['vmin']}-{px_range['vmax']}])")
     print("Now agent4_grasp.py can pre-position above an Oryx-located object before grasping.")
 
 

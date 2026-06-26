@@ -299,24 +299,25 @@ class GraspController:
 
     # -- localization: Oryx finds the object, map -> hover pose above it ----
     def _locate_pixel(self, item_name):
-        """Use Fanar-Oryx to find `item_name` in the live frame; return its center
-        pixel (u, v), or None if not found / vision unavailable."""
+        """Use Fanar-Oryx (FOCUSED, repeated, median) to find `item_name` in the live
+        frame; return its center pixel (u, v), or None if not found."""
         try:
             import cv2
-            from agent.agent3_vision import locate_scene
+            from agent.agent3_vision import locate_one
             import tools as T
+            desc = T.PRODUCTS.get(item_name, item_name)
             frame = np.asarray(self.robot.get_observation()["front"])
             ok, buf = cv2.imencode(".jpg", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-            boxes = locate_scene(buf.tobytes(), frame.shape[1], frame.shape[0], T.PRODUCTS)
-            cand = [b for b in boxes if b["label"] == item_name] or \
-                   [b for b in boxes if item_name in b["label"] or b["label"] in item_name]
-            if not cand:
-                print(f"[grasp] Oryx did not locate '{item_name}' (saw: {[b['label'] for b in boxes]})")
+            samples = int(os.environ.get("BASEER_LOCATE_SAMPLES", "3"))
+            res = locate_one(buf.tobytes(), frame.shape[1], frame.shape[0],
+                             item_name, desc, samples=samples)
+            if res is None:
+                print(f"[grasp] Oryx could NOT locate '{item_name}' in {samples} tries")
                 return None
-            x1, y1, x2, y2 = cand[0]["box"]
-            uv = ((x1 + x2) / 2.0, (y1 + y2) / 2.0)
-            print(f"[grasp] Oryx located '{item_name}' at pixel {tuple(round(c) for c in uv)}")
-            return uv
+            u, v, n = res
+            print(f"[grasp] Oryx located '{item_name}' at pixel ({round(u)},{round(v)}) "
+                  f"[median of {n}/{samples} detections]")
+            return (u, v)
         except Exception as e:
             print(f"[grasp] localization detect failed: {e}")
             return None
@@ -324,6 +325,13 @@ class GraspController:
     def _hover_joints(self, u, v):
         """Map an object pixel (u,v) to the calibrated hover-pose joints."""
         W, H = self.loc_map["W"], self.loc_map["H"]
+        # warn if the pixel is OUTSIDE the calibrated sample range -> the quadratic map
+        # EXTRAPOLATES there and the hover pose can be badly wrong (recalibrate wider).
+        rng = self.loc_map.get("px_range")
+        if rng and not (rng["umin"] <= u <= rng["umax"] and rng["vmin"] <= v <= rng["vmax"]):
+            print(f"[grasp] ⚠ object pixel ({round(u)},{round(v)}) is OUTSIDE the calibrated "
+                  f"range u[{rng['umin']}-{rng['umax']}] v[{rng['vmin']}-{rng['vmax']}] — "
+                  f"hover pose is extrapolated and may be off. Recalibrate covering this area.")
         un, vn = u / W, v / H
         feats = np.array([1.0, un, vn, un * un, un * vn, vn * vn])
         coeffs = np.array(self.loc_map["coeffs"])          # (6 feats, 6 joints)
