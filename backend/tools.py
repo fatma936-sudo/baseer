@@ -38,9 +38,17 @@ def perceive_scene():
     if backend == "oryx":
         try:
             import cv2
-            from agent import agent5_yolo as vision
+            import numpy as np
             from agent.agent3_vision import describe_scene
-            _ok, buf = cv2.imencode(".jpg", vision.capture_frame())
+            # Share ONE camera: if the policy grasp controller is active it OWNS camera 0,
+            # so grab the frame from it (don't open a second OpenCV capture -> avoids the
+            # "camera in use / timed out" conflict). Otherwise use a standalone capture.
+            if os.environ.get("BASEER_GRASP") == "policy":
+                frame = np.asarray(_grasp_controller().robot.get_observation()["front"])
+                _ok, buf = cv2.imencode(".jpg", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+            else:
+                from agent import agent5_yolo as vision
+                _ok, buf = cv2.imencode(".jpg", vision.capture_frame())
             items = describe_scene(buf.tobytes(), PRODUCTS)   # registry-grounded (brand + color)
             print(f"  [tool] perceive_scene() [Fanar-Oryx] -> {items}")
             return {"items": items}
