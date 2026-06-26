@@ -20,12 +20,9 @@ PRODUCTS = {
     "عطر الياسمين":     "perfume — The Body Shop 'Wild Jasmine' (clear glass bottle, amber/yellow liquid)",
     "عطر شيا":          "perfume — The Body Shop 'Shea' (clear glass bottle)",
     "عطر المسك الأبيض": "perfume — The Body Shop 'White Musk' (clear glass bottle, clear liquid)",
-    "شامبو جاف":        "dry shampoo — brand 'Living Proof Perfect Hair Day' (tall slim aerosol can)",
-    "بودرة الشعر":      "hair styling powder spray — brand 'LA Biosthetique Style' Powder Spray (tall aerosol can)",
     "سيروم الشعر":      "hair serum — brand 'Kerastase' (small bottle/tube)",
     "سيروم الوجه":      "face night serum — brand 'Vichy' / 'Normaderm' (small bottle)",
 }
-# The two aerosol cans (شامبو جاف vs بودرة الشعر) look alike -> distinguished by BRAND text.
 SCENE_ITEMS = list(PRODUCTS.keys())  # "السيروم" alone stays ambiguous (two serums) -> agent asks
 
 
