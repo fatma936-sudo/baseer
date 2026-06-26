@@ -129,7 +129,7 @@ Fanar-C-2-27B **accepts** the OpenAI `tools` parameter but **never emits `tool_c
 ## 5. Dataset & model
 
 ### Dataset — `55CancriE/baseer_serums`
-- **28 episodes** = 13 hair serum + 15 face serum, single front camera (640×480 @ 30 fps), LeRobot format.
+- **28 episodes** = 14 hair serum + 14 face serum, single front camera (640×480 @ 30 fps), LeRobot format.
 - Two language tasks: *"Pick up the hair serum / face serum and place it in the delivery zone."*
 - Objects placed at varied positions (free placement) so the policy generalizes across the table.
 - Quality-checked: firm gripper closes on every episode (travel 68–100), no calibration/wrist anomalies.
