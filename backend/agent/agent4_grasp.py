@@ -298,25 +298,42 @@ class GraspController:
             return None
 
     # -- localization: Oryx finds the object, map -> hover pose above it ----
+    @staticmethod
+    def _clean(label):
+        return label.strip().strip("<>").strip()
+
     def _locate_pixel(self, item_name):
-        """Use Fanar-Oryx (FOCUSED, repeated, median) to find `item_name` in the live
-        frame; return its center pixel (u, v), or None if not found."""
+        """Use Fanar-Oryx to find `item_name` in the live frame. Robust: query the
+        (good-recall) all-items detector `samples` times, MEDIAN the target's box center,
+        tolerate misses. Returns (u, v) or None."""
         try:
+            import statistics
             import cv2
-            from agent.agent3_vision import locate_one
+            from agent.agent3_vision import locate_scene
             import tools as T
-            desc = T.PRODUCTS.get(item_name, item_name)
             frame = np.asarray(self.robot.get_observation()["front"])
+            h, w = frame.shape[:2]
             ok, buf = cv2.imencode(".jpg", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+            jpg = buf.tobytes()
             samples = int(os.environ.get("BASEER_LOCATE_SAMPLES", "3"))
-            res = locate_one(buf.tobytes(), frame.shape[1], frame.shape[0],
-                             item_name, desc, samples=samples)
-            if res is None:
-                print(f"[grasp] Oryx could NOT locate '{item_name}' in {samples} tries")
+            centers, last_seen = [], []
+            for _ in range(samples):
+                boxes = locate_scene(jpg, w, h, T.PRODUCTS)
+                last_seen = [self._clean(b["label"]) for b in boxes]
+                cand = [b for b in boxes if self._clean(b["label"]) == item_name] or \
+                       [b for b in boxes if item_name in self._clean(b["label"])
+                        or self._clean(b["label"]) in item_name]
+                if cand:
+                    x1, y1, x2, y2 = cand[0]["box"]
+                    centers.append(((x1 + x2) / 2.0, (y1 + y2) / 2.0))
+            if not centers:
+                print(f"[grasp] Oryx could NOT locate '{item_name}' in {samples} tries "
+                      f"(last saw: {last_seen})")
                 return None
-            u, v, n = res
-            print(f"[grasp] Oryx located '{item_name}' at pixel ({round(u)},{round(v)}) "
-                  f"[median of {n}/{samples} detections]")
+            u = statistics.median(c[0] for c in centers)
+            v = statistics.median(c[1] for c in centers)
+            print(f"[grasp] Oryx located '{item_name}' at ({round(u)},{round(v)}) "
+                  f"[{len(centers)}/{samples} hits]")
             return (u, v)
         except Exception as e:
             print(f"[grasp] localization detect failed: {e}")
