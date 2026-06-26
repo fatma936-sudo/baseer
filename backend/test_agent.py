@@ -61,10 +61,10 @@ ok = (not delivered_ok(r["transcript"])) and bool(r["reply"])
 print("  ->", "PASS" if ok else "FAIL"); results.append(ok)
 
 print("=== 3) HAPPY · native tool-calling path ===")
-r = run("ناولني الشامبو الجاف", json_mode=False, client=FakeToolClient([
+r = run("ناولني عطر شيا", json_mode=False, client=FakeToolClient([
     tc("perceive_scene", {}),
-    tc("deliver", {"item": "شامبو جاف"}),
-    tc("say", {"text_ar": "تفضّل، الشامبو الجاف قدّامك"}),
+    tc("deliver", {"item": "عطر شيا"}),
+    tc("say", {"text_ar": "تفضّل، عطر شيا قدّامك"}),
     {"role": "assistant", "content": ""},
 ]))
 ok = delivered_ok(r["transcript"]) and bool(r["reply"])
