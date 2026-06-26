@@ -189,13 +189,19 @@ class GraspController:
         if not os.path.exists(DELIVERY_PATH):
             return False
         waypoints = json.load(open(DELIVERY_PATH))
+        close = self.cfg["gripper_close_cmd"]
+        # 1) AUTO up-clearance: lift the held object to the high 'travel' pose FIRST so the
+        #    carry clears the other items (e.g. perfume) instead of dragging through them.
+        travel = (self.loc_map or {}).get("travel_pose")
+        if travel:
+            print("[grasp] delivery: lifting to travel height to clear obstacles")
+            self._glide_to({**travel, "gripper.pos": close}, duration_s=2.0)
+        # 2) carry through the saved waypoints (the last one should be the LOW set-down pose)
         print(f"[grasp] scripted delivery: {len(waypoints)} waypoints -> zone")
         for i, wp in enumerate(waypoints, 1):
-            target = dict(wp)
-            target["gripper.pos"] = self.cfg["gripper_close_cmd"]  # keep holding
-            self._glide_to(target, duration_s=2.0)
+            self._glide_to({**wp, "gripper.pos": close}, duration_s=2.0)  # hold object
             print(f"[grasp]   waypoint {i}/{len(waypoints)} reached")
-        self.open_gripper()                                        # hand it over
+        self.open_gripper()                                        # release at the set-down pose
         return True
 
     # -- one policy attempt -------------------------------------------------
