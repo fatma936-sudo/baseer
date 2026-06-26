@@ -75,6 +75,7 @@ def main():
     print("For each spot: CLICK the object, hover the arm above it, press 's'.  q=fit")
 
     samples = []   # list of (u_px, v_px, [6 joints])
+    travel = None  # one raised "travel" pose for the top-down approach (press 'h')
     try:
         while True:
             action = leader.get_action()          # teleoperate: leader drives follower
@@ -91,14 +92,18 @@ def main():
                 cv2.circle(disp, click["uv"], 6, (0, 0, 255), 2)
             for (u, v, _) in samples:
                 cv2.circle(disp, (int(u), int(v)), 4, (0, 255, 0), -1)
-            cv2.putText(disp, f"samples={len(samples)}  click obj, hover, 's'.  q=fit",
-                        (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            cv2.putText(disp, f"samples={len(samples)}  travel={'set' if travel else 'NO'}  "
+                        "s=sample h=travel u=undo q=fit",
+                        (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2)
             cv2.imshow("localization calib", disp)
             k = cv2.waitKey(1) & 0xFF
             if k == ord("q"):
                 break
             if k == ord("u") and samples:
                 samples.pop(); print("undid last sample")
+            if k == ord("h"):     # capture the raised "travel" pose (arm high, retracted, safe)
+                travel = {j: round(float(obs[j]), 2) for j in KEYS}
+                print(f"  travel pose set: lift={travel['shoulder_lift.pos']} elbow={travel['elbow_flex.pos']}")
             if k == ord("s"):
                 if not click["uv"]:
                     print("click the object first!"); continue
@@ -135,10 +140,15 @@ def main():
 
     us = [u for (u, v, _) in samples]; vs = [v for (u, v, _) in samples]
     px_range = {"umin": min(us), "umax": max(us), "vmin": min(vs), "vmax": max(vs)}
-    json.dump({"W": W, "H": H, "keys": KEYS, "coeffs": coeffs.tolist(),
-               "n_samples": len(samples), "px_range": px_range}, open(OUT, "w"), indent=2)
+    out = {"W": W, "H": H, "keys": KEYS, "coeffs": coeffs.tolist(),
+           "n_samples": len(samples), "px_range": px_range}
+    if travel:
+        out["travel_pose"] = travel
+    else:
+        print("⚠ no travel pose captured (press 'h' next time) — top-down approach will be weaker.")
+    json.dump(out, open(OUT, "w"), indent=2)
     print(f"wrote {OUT}  ({len(samples)} samples, covered u[{px_range['umin']}-{px_range['umax']}] "
-          f"v[{px_range['vmin']}-{px_range['vmax']}])")
+          f"v[{px_range['vmin']}-{px_range['vmax']}], travel={'yes' if travel else 'no'})")
     print("Now agent4_grasp.py can pre-position above an Oryx-located object before grasping.")
 
 

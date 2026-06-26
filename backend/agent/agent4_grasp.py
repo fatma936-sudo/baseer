@@ -379,14 +379,19 @@ class GraspController:
             return False
         target = self._hover_joints(*uv)
         target["gripper.pos"] = self.cfg["gripper_open_cmd"]   # approach with gripper open
-        # Phase 1: rotate over the target while staying at the raised home height (no table sweep).
-        via = dict(target)
-        for j in ("shoulder_lift.pos", "elbow_flex.pos"):
-            if j in self.home_pose:
-                via[j] = self.home_pose[j]
-        print(f"[grasp] pre-reaching above '{item_name}' (rotate-high then descend)")
-        self._glide_to(via, duration_s=1.8)      # over the target, still raised
-        self._glide_to(target, duration_s=1.5)   # descend straight onto the hover pose
+        # TOP-DOWN approach to avoid sweeping into neighbors:
+        #   1) raise to the captured high 'travel' pose, 2) rotate over the target while
+        #   staying high, 3) descend onto the hover pose. Falls back to home height if no
+        #   travel pose was captured.
+        high = dict(self.loc_map.get("travel_pose") or self.home_pose)
+        over = dict(high)
+        over["shoulder_pan.pos"] = target["shoulder_pan.pos"]   # rotate toward target, stay high
+        for d in (high, over):
+            d["gripper.pos"] = self.cfg["gripper_open_cmd"]
+        print(f"[grasp] pre-reaching above '{item_name}' (raise -> over -> descend)")
+        self._glide_to(high, duration_s=1.8)     # raise straight up to travel height
+        self._glide_to(over, duration_s=1.5)     # rotate over the target, still high
+        self._glide_to(target, duration_s=1.5)   # descend onto the hover pose
         return True
 
     def announce_scene(self):
