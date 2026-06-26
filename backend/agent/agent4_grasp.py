@@ -180,6 +180,39 @@ class GraspController:
         """Smoothly interpolate back to the captured start pose (in-distribution restart)."""
         self._glide_to(self.home_pose, duration_s)
 
+    def _arm_current(self):
+        """Combined |current| on the lift+elbow motors (the joints that bear a downward push)."""
+        c = self.robot.bus.sync_read("Present_Current")
+        return abs(float(c["shoulder_lift"])) + abs(float(c["elbow_flex"]))
+
+    def lower_until_contact(self, step_deg=1.5, max_drop_deg=35.0, settle_s=0.12):
+        """Lower the arm in small steps until the held object meets the table — detected
+        by a RISE in lift/elbow motor current (torque), not vision. Stops on contact and
+        leaves the object resting; caller then opens the gripper. Returns True on contact.
+
+        Direction: 'down' = decreasing shoulder_lift (grasp poses are low). Override the
+        signed step with BASEER_LOWER_STEP if your calibration's sign is reversed."""
+        step = float(os.environ.get("BASEER_LOWER_STEP", str(-abs(step_deg))))  # -ve = lower
+        margin = float(os.environ.get("BASEER_CONTACT_MARGIN", "120"))
+        pose = {k: v for k, v in self.robot.get_observation().items() if k.endswith(".pos")}
+        pose["gripper.pos"] = self.cfg["gripper_close_cmd"]      # keep holding while lowering
+        base, dropped, readings = None, 0.0, []
+        while dropped < max_drop_deg:
+            pose["shoulder_lift.pos"] += step
+            self._send_full(pose)
+            time.sleep(settle_s)
+            dropped += abs(step)
+            cur = self._arm_current()
+            readings.append(cur)
+            if base is None and len(readings) >= 3:
+                base = sum(readings[:3]) / 3.0                   # free-lowering baseline
+            if base is not None and cur > base + margin:
+                print(f"[grasp] set-down CONTACT (current {cur:.0f} > base {base:.0f}+{margin:.0f}) "
+                      f"after {dropped:.0f}° drop")
+                return True
+        print(f"[grasp] no clear contact after {max_drop_deg:.0f}° drop — releasing anyway")
+        return False
+
     def deliver_to_zone(self):
         """Replay the saved delivery waypoints (fixed zone), then release.
 
@@ -196,12 +229,16 @@ class GraspController:
         if travel:
             print("[grasp] delivery: lifting to travel height to clear obstacles")
             self._glide_to({**travel, "gripper.pos": close}, duration_s=2.0)
-        # 2) carry through the saved waypoints (the last one should be the LOW set-down pose)
+        # 2) carry through the saved waypoints (these just bring the arm OVER the zone;
+        #    the exact set-down height is found by feel, not by a precise recording)
         print(f"[grasp] scripted delivery: {len(waypoints)} waypoints -> zone")
         for i, wp in enumerate(waypoints, 1):
             self._glide_to({**wp, "gripper.pos": close}, duration_s=2.0)  # hold object
             print(f"[grasp]   waypoint {i}/{len(waypoints)} reached")
-        self.open_gripper()                                        # release at the set-down pose
+        # 3) lower until the object touches the table (torque feedback), then release
+        if os.environ.get("BASEER_SETDOWN_CONTACT", "1") == "1":
+            self.lower_until_contact()
+        self.open_gripper()                                        # release once resting
         return True
 
     # -- one policy attempt -------------------------------------------------
