@@ -361,9 +361,11 @@ class GraspController:
 
         Approaches FROM ABOVE — rotates over the target at the raised 'home' height first,
         then descends — so the gripper doesn't sweep across the table into other objects.
-        Disable entirely with BASEER_PREREACH=0 (policy then runs alone)."""
-        if os.environ.get("BASEER_PREREACH", "1") == "0":
-            print("[grasp] pre-reach DISABLED (BASEER_PREREACH=0) — policy runs alone")
+        OFF by default (policy runs alone — the behavior that grasped reliably); the
+        pixel->hover localization is opt-in via BASEER_PREREACH=1 while it's being tuned."""
+        if os.environ.get("BASEER_PREREACH", "0") != "1":
+            print("[grasp] pre-reach OFF (default) — policy runs alone. "
+                  "Set BASEER_PREREACH=1 to enable Oryx pre-positioning (still being tuned).")
             return False
         if not self.loc_map:
             print("[grasp] NO localization map — skipping pre-position (policy runs alone). "
