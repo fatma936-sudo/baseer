@@ -94,6 +94,7 @@ class GraspController:
         self.cfg = _load_cfg()
         self.fps = fps
         self.device = _device()
+        self.grasp_pose = None      # joints at the moment of grasp (for level set-down)
         print(f"[grasp] device={self.device}")
 
         # --- robot (reuse an open one if the caller passes it) ---
@@ -196,6 +197,10 @@ class GraspController:
         margin = float(os.environ.get("BASEER_CONTACT_MARGIN", "120"))
         pose = {k: v for k, v in self.robot.get_observation().items() if k.endswith(".pos")}
         pose["gripper.pos"] = self.cfg["gripper_close_cmd"]      # keep holding while lowering
+        if self.grasp_pose:                                     # keep wrist level (grasp angle)
+            for k in ("wrist_flex.pos", "wrist_roll.pos"):
+                if k in self.grasp_pose:
+                    pose[k] = self.grasp_pose[k]
         base, dropped, readings = None, 0.0, []
         while dropped < max_drop_deg:
             pose["shoulder_lift.pos"] += step
@@ -226,17 +231,28 @@ class GraspController:
             return False
         waypoints = json.load(open(DELIVERY_PATH))
         close = self.cfg["gripper_close_cmd"]
+        # Keep the WRIST at the grasp orientation through the whole carry, so the object
+        # stays at the angle it was picked (upright) and doesn't land tilted / roll.
+        wrist = {}
+        if self.grasp_pose:
+            wrist = {k: self.grasp_pose[k] for k in ("wrist_flex.pos", "wrist_roll.pos")
+                     if k in self.grasp_pose}
+
+        def held(pose):                       # gripper closed + grasp wrist
+            return {**pose, **wrist, "gripper.pos": close}
+
         # 1) AUTO up-clearance: lift the held object to the high 'travel' pose FIRST so the
         #    carry clears the other items (e.g. perfume) instead of dragging through them.
         travel = (self.loc_map or {}).get("travel_pose")
         if travel:
             print("[grasp] delivery: lifting to travel height to clear obstacles")
-            self._glide_to({**travel, "gripper.pos": close}, duration_s=2.0)
+            self._glide_to(held(travel), duration_s=2.0)
         # 2) carry through the saved waypoints (these just bring the arm OVER the zone;
         #    the exact set-down height is found by feel, not by a precise recording)
-        print(f"[grasp] scripted delivery: {len(waypoints)} waypoints -> zone")
+        print(f"[grasp] scripted delivery: {len(waypoints)} waypoints -> zone "
+              f"(wrist {'locked to grasp angle' if wrist else 'as recorded'})")
         for i, wp in enumerate(waypoints, 1):
-            self._glide_to({**wp, "gripper.pos": close}, duration_s=2.0)  # hold object
+            self._glide_to(held(wp), duration_s=2.0)
             print(f"[grasp]   waypoint {i}/{len(waypoints)} reached")
         # 3) lower until the object touches the table (torque feedback), then release
         if os.environ.get("BASEER_SETDOWN_CONTACT", "1") == "1":
@@ -479,6 +495,10 @@ class GraspController:
                     held = False
             if held:
                 print("[grasp] object secured — completing delivery.")
+                # remember the WRIST orientation at grasp so we set the object down at the
+                # same angle it was picked up (upright) — otherwise it lands tilted and rolls
+                self.grasp_pose = {k: v for k, v in self.robot.get_observation().items()
+                                   if k.endswith(".pos")}
                 # Prefer the deterministic scripted delivery (fixed zone); if no
                 # waypoints saved, fall back to letting the policy carry + place.
                 if not self.deliver_to_zone():
