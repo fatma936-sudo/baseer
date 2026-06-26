@@ -4,15 +4,20 @@ Fanar-Oryx locates in the camera image. This is the "localization" layer: it lea
 directly from the fixed camera + fixed table, where to move the arm for any object
 pixel — no camera extrinsics or IK tuning needed.
 
-HOW IT WORKS (teleoperation — same as recording): you drive the FOLLOWER with the
-LEADER arm. For ~12 spots across the table you (1) CLICK the object's center in the
-camera window, then (2) teleop the arm to hover just above that object in a ready-to-
-grasp pose and press 's' to capture the joints. We then fit a smooth quadratic map
-(u,v) -> 6 joint angles and save it to localization_map.json, which agent4_grasp.py
-uses to pre-position before the policy grasps.
+SIMPLE FLOW (no objects, no clicking): you drive the FOLLOWER with the LEADER arm.
+The blue gripper TIP is auto-tracked (green dot). For ~12 spots across the table:
+  - teleop the gripper down to hover just above a spot on the table,
+  - check the green dot is on the gripper tip,
+  - press 's'  (captures: that pixel + the arm's joints).
+Spread the spots over the WHOLE table (left/center/right edges, near/far, and the spots
+you'll actually place serums). Also press 'h' ONCE with the arm raised high to set the
+'travel' pose (used for the top-down approach). Press 'q' to fit + save.
 
-ONE object, moved to ~12 different positions (near/far, left/center/right). Each spot =
-one sample (click + hover + 's'). After ~12 samples press 'q' to fit.
+We fit a smooth map (pixel -> 6 joint angles) -> localization_map.json. At runtime Oryx
+finds the target object's pixel and this map sends the arm there.
+
+(If the green dot isn't on the tip, just CLICK the right spot — a click overrides the
+auto-detection for that capture.)
 
     python backend/robot/calibrate_localization.py \
         --port /dev/tty.usbmodem5AB90677591 --id follower_so100 \
@@ -20,10 +25,8 @@ one sample (click + hover + 's'). After ~12 samples press 'q' to fit.
 
 Controls (focus the camera window):
   drive the LEADER arm  = the follower mirrors it (teleoperation)
-  click                 = mark the object's center (do this BEFORE pressing s)
-  s                     = save a sample (current click + current follower joints)
-  u                     = undo last sample
-  q                     = finish and fit the map  (need >= 8 samples)
+  s = capture a spot (auto gripper tip, or your click)   h = set the raised travel pose
+  u = undo last        q = finish + fit + save (need >= 8 samples)
 """
 import argparse
 import json
@@ -53,6 +56,22 @@ def on_mouse(event, x, y, flags, param):
 def feats(u, v):
     """Quadratic feature vector for normalized pixel (u,v) in [0,1]."""
     return np.array([1.0, u, v, u * u, u * v, v * v], dtype=np.float64)
+
+
+def detect_gripper_tip(bgr):
+    """Auto-locate the (blue) gripper tip in the frame so you don't have to click.
+    Returns (u, v) of the lowest point of the largest blue blob, or None."""
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, (90, 60, 40), (135, 255, 255))   # blue gripper
+    cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not cnts:
+        return None
+    c = max(cnts, key=cv2.contourArea)
+    if cv2.contourArea(c) < 150:
+        return None
+    pts = c.reshape(-1, 2)
+    tip = pts[pts[:, 1].argmax()]            # lowest point = finger tip (gripper points down)
+    return (int(tip[0]), int(tip[1]))
 
 
 def main():
@@ -88,12 +107,16 @@ def main():
                 continue
             img = np.asarray(obs["front"])
             disp = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            auto = detect_gripper_tip(disp)                 # auto-track the gripper tip
+            if auto:
+                cv2.circle(disp, auto, 7, (0, 255, 0), 2)   # green = auto-detected tip
+                cv2.putText(disp, "tip", (auto[0] + 8, auto[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
             if click["uv"]:
-                cv2.circle(disp, click["uv"], 6, (0, 0, 255), 2)
+                cv2.circle(disp, click["uv"], 6, (0, 0, 255), 2)   # red = manual override click
             for (u, v, _) in samples:
-                cv2.circle(disp, (int(u), int(v)), 4, (0, 255, 0), -1)
+                cv2.circle(disp, (int(u), int(v)), 4, (255, 0, 0), -1)
             cv2.putText(disp, f"samples={len(samples)}  travel={'set' if travel else 'NO'}  "
-                        "s=sample h=travel u=undo q=fit",
+                        "s=capture h=travel u=undo q=fit",
                         (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2)
             cv2.imshow("localization calib", disp)
             k = cv2.waitKey(1) & 0xFF
@@ -105,12 +128,14 @@ def main():
                 travel = {j: round(float(obs[j]), 2) for j in KEYS}
                 print(f"  travel pose set: lift={travel['shoulder_lift.pos']} elbow={travel['elbow_flex.pos']}")
             if k == ord("s"):
-                if not click["uv"]:
-                    print("click the object first!"); continue
+                uv = click["uv"] or auto      # prefer a manual click; else the auto tip
+                if not uv:
+                    print("no gripper detected and no click — move the gripper into view or click a spot")
+                    continue
                 joints = [float(obs[j]) for j in KEYS]
-                u, v = click["uv"]
-                samples.append((u, v, joints))
-                print(f"  saved #{len(samples)}: px=({u},{v}) joints={[round(x,1) for x in joints]}")
+                samples.append((uv[0], uv[1], joints))
+                print(f"  saved #{len(samples)}: px={uv} ({'click' if click['uv'] else 'auto'}) "
+                      f"lift={round(joints[1],1)}")
                 click["uv"] = None
             time.sleep(0.02)
     finally:
