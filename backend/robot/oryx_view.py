@@ -23,6 +23,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 from agent.agent3_vision import locate_scene
 from tools import PRODUCTS
 
+# OpenCV can't render Arabic, so show a short ASCII tag above each box (derived from the
+# registry description, e.g. "hair serum — Kerastase ..." -> "hair serum"). Terminal keeps Arabic.
+EN = {k: v.split("—")[0].split("-")[0].strip()[:20] for k, v in PRODUCTS.items()}
+
 idx = int(os.environ.get("BASEER_CAM_INDEX", "0"))
 interval = float(os.environ.get("ORYX_INTERVAL", "6"))
 cap = cv2.VideoCapture(idx)
@@ -62,11 +66,14 @@ while True:
         last_t = now
 
     disp = frame.copy()
-    for i, it in enumerate(last_items):   # number the boxes; Arabic names print in the terminal
+    for i, it in enumerate(last_items):   # draw box + English tag above it (Arabic also in terminal)
         x1, y1, x2, y2 = it["box"]
         cv2.rectangle(disp, (x1, y1), (x2, y2), (0, 0, 255), 3)
-        cv2.putText(disp, f"#{i + 1}", (x1, max(y1 - 8, 18)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+        tag = f"#{i + 1} {EN.get(it['label'], it['label'])}"
+        (tw, th), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+        ty = max(y1 - 10, th + 6)
+        cv2.rectangle(disp, (x1, ty - th - 6), (x1 + tw + 6, ty + 4), (0, 0, 255), -1)  # bg for legibility
+        cv2.putText(disp, tag, (x1 + 3, ty), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
     mode = "AUTO" if auto else "MANUAL"
     cv2.putText(disp, f"{mode}  items:{len(last_items)}  (SPACE/A/C/Q)", (16, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 180, 0), 2)
