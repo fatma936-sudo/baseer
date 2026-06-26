@@ -185,7 +185,7 @@ class GraspController:
         c = self.robot.bus.sync_read("Present_Current")
         return abs(float(c["shoulder_lift"])) + abs(float(c["elbow_flex"]))
 
-    def lower_until_contact(self, step_deg=1.5, max_drop_deg=35.0, settle_s=0.12):
+    def lower_until_contact(self, step_deg=1.0, max_drop_deg=35.0, settle_s=0.12):
         """Lower the arm in small steps until the held object meets the table — detected
         by a RISE in lift/elbow motor current (torque), not vision. Stops on contact and
         leaves the object resting; caller then opens the gripper. Returns True on contact.
@@ -209,6 +209,9 @@ class GraspController:
             if base is not None and cur > base + margin:
                 print(f"[grasp] set-down CONTACT (current {cur:.0f} > base {base:.0f}+{margin:.0f}) "
                       f"after {dropped:.0f}° drop")
+                pose["shoulder_lift.pos"] -= step          # back off one step so it rests upright, not pressed
+                self._send_full(pose)
+                time.sleep(0.15)
                 return True
         print(f"[grasp] no clear contact after {max_drop_deg:.0f}° drop — releasing anyway")
         return False
