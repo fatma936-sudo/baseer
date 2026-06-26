@@ -23,9 +23,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) 
 from agent.agent3_vision import locate_scene
 from tools import PRODUCTS
 
-# OpenCV can't render Arabic, so show a short ASCII tag above each box (derived from the
-# registry description, e.g. "hair serum — Kerastase ..." -> "hair serum"). Terminal keeps Arabic.
-EN = {k: v.split("—")[0].split("-")[0].strip()[:20] for k, v in PRODUCTS.items()}
+# OpenCV can't render Arabic, so show a short ASCII tag above each box: the category plus
+# the brand/scent (in quotes in the registry) so look-alikes stay distinct. Terminal keeps Arabic.
+import re as _re
+
+
+def _tag(desc):
+    cat = desc.split("—")[0].split("-")[0].strip()
+    m = _re.search(r"'([^']+)'", desc)              # brand/scent, e.g. 'Wild Jasmine', 'Kerastase'
+    return (f"{cat}: {m.group(1)}" if m else cat)[:26]
+
+
+EN = {k: _tag(v) for k, v in PRODUCTS.items()}
 
 idx = int(os.environ.get("BASEER_CAM_INDEX", "0"))
 interval = float(os.environ.get("ORYX_INTERVAL", "6"))
