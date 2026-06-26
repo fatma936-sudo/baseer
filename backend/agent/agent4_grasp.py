@@ -190,9 +190,9 @@ class GraspController:
         by a RISE in lift/elbow motor current (torque), not vision. Stops on contact and
         leaves the object resting; caller then opens the gripper. Returns True on contact.
 
-        Direction: 'down' = decreasing shoulder_lift (grasp poses are low). Override the
-        signed step with BASEER_LOWER_STEP if your calibration's sign is reversed."""
-        step = float(os.environ.get("BASEER_LOWER_STEP", str(-abs(step_deg))))  # -ve = lower
+        Direction: on this arm 'down' = INCREASING shoulder_lift. Override the signed step
+        with BASEER_LOWER_STEP (e.g. -1.5) if your calibration's sign is reversed."""
+        step = float(os.environ.get("BASEER_LOWER_STEP", str(abs(step_deg))))  # +ve = lower (this arm)
         margin = float(os.environ.get("BASEER_CONTACT_MARGIN", "120"))
         pose = {k: v for k, v in self.robot.get_observation().items() if k.endswith(".pos")}
         pose["gripper.pos"] = self.cfg["gripper_close_cmd"]      # keep holding while lowering
