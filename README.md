@@ -28,24 +28,6 @@ For an elderly, blind, Arabic-speaking user, neither works. The accessibility ga
 
 ---
 
-## 2. System architecture
-
-Three tiers, split by a hard constraint: **the robot's USB serial and the camera are only visible to the machine they're plugged into**, so a laptop hosts the control loop. The phone is a thin client (mic + speaker); the GPU box is used **offline only** to train the motion policy.
-
-```
-┌─────────────┐  HTTPS   ┌──────────────────────────────────────────────┐  HTTPS API  ┌────────────────┐
-│   PHONE     │ ─audio─▶ │   LAPTOP  (host / orchestrator)                │ ─requests─▶ │  FANAR CLOUD   │
-│ thin client │ ◀reply── │   server.py (FastAPI)                          │ ◀responses─ │  Aura ASR/TTS  │
-│ tap-to-talk │          │     agent.py   ReAct loop (the brain)          │             │  Fanar-C-2-27B │
-└─────────────┘          │     tools.py   perceive / deliver / say / ask  │             │  Fanar-Oryx    │
-                         │     fanar.py   Fanar + Aura + Oryx client      │             └────────────────┘
-                         │     grasp.py   localize → grasp → retry → give │  LOCAL on laptop:
-                         │        │                                       │   • OpenCV camera (front)
-                         │        ▼                                       │   • USB serial → SO-100
-                         │   SO-100 arm  +  SmolVLA grasp policy          │
-                         └──────────────────────────────────────────────┘
-            OFFLINE (once, GPU box):  teleop demos → lerobot-record → lerobot-train (SmolVLA) → checkpoint
-```
 
 **The four "organs":**
 
@@ -58,7 +40,7 @@ Three tiers, split by a hard constraint: **the robot's USB serial and the camera
 
 ---
 
-## 3. The full pipeline
+## 2. The full pipeline
 
 ### Online — one spoken request
 ```
@@ -93,7 +75,7 @@ On a miss the controller opens, returns to a known pose, re-localizes and tries 
 
 ---
 
-## 4. Agentic workflow (Fanar as a hierarchical VLA)
+## 3. Agentic workflow (Fanar as a hierarchical VLA)
 
 ![ReAct framework of Fanar-C-2-27B](docs/react_framework.png)
 
@@ -128,7 +110,7 @@ Fanar-C-2-27B **accepts** the OpenAI `tools` parameter but **never emits `tool_c
 
 ---
 
-## 5. Dataset & model
+## 4. Dataset & model
 
 ### Dataset — `55CancriE/baseer_serums`
 - **28 episodes** = 14 hair serum + 14 face serum, single front camera (640×480 @ 30 fps), LeRobot format.
@@ -144,7 +126,7 @@ Fanar-C-2-27B **accepts** the OpenAI `tools` parameter but **never emits `tool_c
 
 ---
 
-## 6. Use of Fanar
+## 5. Use of Fanar
 
 | Capability | Model ID | Role |
 |---|---|---|
@@ -157,7 +139,7 @@ Fanar's **dialect handling is the star**: Gulf / Egyptian / MSA and code-switchi
 
 ---
 
-## 7. Results & findings
+## 6. Results & findings
 
 ### Functional (live, real Fanar API)
 | Test | Input | Result |
@@ -186,7 +168,7 @@ Fanar's **dialect handling is the star**: Gulf / Egyptian / MSA and code-switchi
 
 ---
 
-## 8. Setup & run
+## 7. Setup & run
 
 ### Install
 ```bash
@@ -228,7 +210,7 @@ python backend/agent/agent4_grasp.py --policy ~/baseer/policy_vla/pretrained_mod
 
 ---
 
-## 9. Repository structure
+## 8. Repository structure
 
 Organized into **`GUI/`** (frontend), **`backend/`** (server + logic), with the model
 calls grouped under **`backend/agent/`** — one module per model ("agent 1, 2, …").
@@ -265,7 +247,7 @@ baseer/
 
 ---
 
-## 10. Demo mode & future work
+## 9. Demo mode & future work
 
 **What runs in the live demo (reliable):** voice → Aura ASR → Fanar agent → **Oryx announces** which serums are on the table → **policy grasps** the target (verified by torque + gripper width, with retry) → **scripted delivery** (auto lift-to-clear → set down at the zone) → Aura speaks the confirmation. The requested serum is placed in the grasp area.
 
