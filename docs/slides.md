@@ -135,15 +135,59 @@ Oryx locate target ─▶ pre-position above it ─▶ SmolVLA grasp
 
 ## Effective use of Fanar  ·  *(20%)*
 
-| Capability | Model | Role |
-|---|---|---|
-| Reasoning | `Fanar-C-2-27B` | dialect → plan → tool calls → graceful refusal |
-| Speech-to-text | `Fanar-Aura-STT-1` | Arabic voice → text |
-| Text-to-speech | `Fanar-Aura-TTS-2` (Noor) | spoken reply **in the user's dialect** |
-| Vision | `Fanar-Oryx-IVU-2` | reads labels → identify + localize the item |
+**Four Fanar models, each doing a job only Fanar does well — all Arabic-native:**
 
-- **Dialect is the star:** Gulf / Egyptian / Levantine / MSA map *directly* to actions — **no English translation step**.
-- **Oryx reads brands** to tell look-alike products apart (plain detectors can't).
+| 🧠 Brain | 👁️ Eyes | 🗣️ Voice |
+|---|---|---|
+| `Fanar-C-2-27B` | `Fanar-Oryx-IVU-2` | `Aura STT-1` + `Aura TTS-2` |
+| decide & disambiguate | read labels, localize | hear + speak the dialect |
+
+> No English anywhere in the loop — dialect in, dialect out, vision and reasoning all in Arabic.
+
+*(next 3 slides: how we used each)*
+
+---
+
+## Fanar-C-2-27B — the reasoning brain
+
+**Role:** the agentic decision-maker — understands the request, plans, picks tools, refuses safely.
+
+**How we used it**
+- **ReAct loop**: emits one action per turn — `perceive_scene` / `deliver` / `say` / `ask`.
+- **Dialect → action directly**: Gulf / Egyptian / Levantine / MSA + dialectal item names (العطر/البرفان…) mapped to the catalog — **no translation step**; replies *in the same dialect*.
+- **Grounds before acting** (perceive → confirm → deliver), **disambiguates** ("أي سيروم؟"), **fails gracefully**, handles **multi-step** requests.
+
+**What we learned**
+- Native **tool-calling returns empty `tool_calls`** → we drive it as a **JSON-action state machine** (`response_format=json_object` + strict few-shot) — the single change that made it reliable.
+- **Safety filter** fires on benign Arabic → **retry-with-backoff**.
+
+---
+
+## Fanar-Oryx-IVU-2 — the eyes (VLM)
+
+**Role:** perception — sees the table, identifies *which* items are there, and *where*.
+
+**How we used it**
+- **`describe_scene`** — grounded to a **product registry** (brand + color/shape): returns which catalog items are present, by **reading the printed brand text** (e.g. Kérastase vs Vichy).
+- **`locate_scene` / `locate_one`** — returns **pixel bounding boxes** to aim the arm; we query **×3 and take the median** to smooth VLM jitter, and clean label formatting.
+- Powers **disambiguation**: sees two serums → the agent asks which.
+
+**Why Oryx (not a plain detector)**
+- YOLO-World failed on look-alike cosmetics (conf 0.06–0.12, can't read scents). **Oryx reads the label** → distinguishes them. *Limitation:* box precision is ~cm-level and jittery → fine for identity, not yet for blind grasping.
+
+---
+
+## Aura — the voice (ASR + TTS)
+
+**Role:** the user's *only* I/O channel — hears Arabic, speaks Arabic back.
+
+**How we used it**
+- **Aura ASR (`STT-1`)**: tap-to-talk audio → Arabic text (dialect-robust).
+- **Aura TTS (`TTS-2`, voice Noor)**: speaks every reply **in the user's dialect** (Fanar writes the dialect text; Aura renders it). Disk-cached; **two-phase**: *"دقيقة…"* then *"ها هو…"*.
+
+**What we learned**
+- ASR **fuses multi-word brands & over-diacritizes** ("عطر ديور"→"عِطراديور"), and misheard **"السيروم"→"السيرة"** (religiously loaded) → tripped the safety filter. Fixed with **`normalize.py`** (diacritic strip + alias map) *before* Fanar.
+- Shared **rate limits** → TTS **disk-cache** + fixed-phrase reuse; never leak raw errors → always speak a clean retry.
 
 ---
 
