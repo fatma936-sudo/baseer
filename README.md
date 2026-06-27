@@ -109,10 +109,10 @@ Fanar's output is *choosing among these* → Fanar is a **task-level VLA** (Visi
 ### The loop, message by message (for *"ناوليني السيروم"* with two serums present)
 ```
 SYSTEM:  You are بَصير … perceive before deliver; always say; disambiguate; fail gracefully.
-USER:    ناوليني السيروم
+USER:    اديني السيروم
   Fanar ▶ {"action":"perceive_scene","args":{}}
 OBSERVATION: {"items":["سيروم الشعر","سيروم الوجه"]}
-  Fanar ▶ {"action":"ask","args":{"text_ar":"عندي سيروم الوجه وسيروم الشعر، أي واحد تبي؟"}}   ← waits
+  Fanar ▶ {"action":"ask","args":{"text_ar":"عندي سيروم الوجه وسيروم الشعر، أي واحد  تريد؟"}}   ← waits
 USER:    سيروم الشعر
   Fanar ▶ {"action":"deliver","args":{"item":"سيروم الشعر"}}
 OBSERVATION: {"ok":true,"item":"سيروم الشعر"}
