@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 760" font-family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#475569"/>
+    </marker>
+    <marker id="arrG" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrP" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#7c3aed"/>
+    </marker>
+  </defs>
+
+  <rect width="1280" height="760" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="640" y="44" text-anchor="middle" font-size="30" font-weight="700" fill="#0f172a">بَصير · Baseer — Agentic Workflow</text>
+  <text x="640" y="74" text-anchor="middle" font-size="15" fill="#64748b">Fanar as a hierarchical VLA — spoken dialect → tool actions → physical grasp (ReAct: Reason → Act → Observe)</text>
+
+  <!-- ===== Col A: VOICE I/O ===== -->
+  <text x="150" y="118" text-anchor="middle" font-size="13" font-weight="700" fill="#94a3b8" letter-spacing="1">VOICE</text>
+
+  <!-- User -->
+  <rect x="40" y="130" width="220" height="84" rx="14" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+  <text x="150" y="162" text-anchor="middle" font-size="16" font-weight="700" fill="#312e81">👤 User · iPad</text>
+  <text x="150" y="186" text-anchor="middle" font-size="12.5" fill="#475569">tap-and-hold, speak any</text>
+  <text x="150" y="202" text-anchor="middle" font-size="12.5" fill="#475569">Arabic dialect</text>
+
+  <!-- Aura ASR -->
+  <rect x="40" y="248" width="220" height="70" rx="14" fill="#ecfeff" stroke="#06b6d4" stroke-width="2"/>
+  <text x="150" y="277" text-anchor="middle" font-size="15" font-weight="700" fill="#155e75">Aura ASR</text>
+  <text x="150" y="298" text-anchor="middle" font-size="12.5" fill="#475569">speech → Arabic text</text>
+
+  <!-- normalize -->
+  <rect x="40" y="352" width="220" height="70" rx="14" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/>
+  <text x="150" y="381" text-anchor="middle" font-size="15" font-weight="700" fill="#334155">normalize.py</text>
+  <text x="150" y="402" text-anchor="middle" font-size="12.5" fill="#475569">fix diacritics / brand aliases</text>
+
+  <!-- Aura TTS (reply) -->
+  <rect x="40" y="556" width="220" height="84" rx="14" fill="#ecfeff" stroke="#06b6d4" stroke-width="2"/>
+  <text x="150" y="588" text-anchor="middle" font-size="15" font-weight="700" fill="#155e75">Aura TTS 🔊</text>
+  <text x="150" y="610" text-anchor="middle" font-size="12.5" fill="#475569">speaks the reply</text>
+  <text x="150" y="626" text-anchor="middle" font-size="12.5" fill="#475569">in the user's dialect</text>
+
+  <!-- voice arrows -->
+  <line x1="150" y1="214" x2="150" y2="246" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="150" y1="318" x2="150" y2="350" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- normalize -> Fanar -->
+  <path d="M260,387 L300,387 L300,300 L360,300" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#arr)"/>
+  <!-- TTS -> User (spoken reply up the left) -->
+  <path d="M150,556 L150,214" fill="none" stroke="#06b6d4" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#arr)" opacity="0.55"/>
+  <text x="120" y="470" text-anchor="middle" font-size="11" fill="#0891b2" transform="rotate(-90 120 470)">spoken reply</text>
+
+  <!-- ===== Col B: FANAR BRAIN ===== -->
+  <rect x="360" y="150" width="360" height="300" rx="18" fill="#faf5ff" stroke="#7c3aed" stroke-width="2.5"/>
+  <text x="540" y="184" text-anchor="middle" font-size="18" font-weight="700" fill="#5b21b6">🧠 Fanar-C-2-27B — the brain</text>
+  <text x="540" y="206" text-anchor="middle" font-size="12.5" fill="#6d28d9">ReAct loop · decides every step (no if/else)</text>
+
+  <!-- ReAct cycle -->
+  <circle cx="540" cy="300" r="74" fill="none" stroke="#a78bfa" stroke-width="2" stroke-dasharray="4,4"/>
+  <text x="540" y="244" text-anchor="middle" font-size="13" font-weight="700" fill="#6d28d9">Reason</text>
+  <text x="612" y="312" text-anchor="middle" font-size="13" font-weight="700" fill="#6d28d9">Act</text>
+  <text x="468" y="312" text-anchor="middle" font-size="13" font-weight="700" fill="#6d28d9">Observe</text>
+  <text x="540" y="306" text-anchor="middle" font-size="22" fill="#a78bfa">↻</text>
+
+  <!-- JSON action chip -->
+  <rect x="392" y="392" width="296" height="44" rx="9" fill="#1e1b4b"/>
+  <text x="540" y="412" text-anchor="middle" font-size="12" fill="#c4b5fd" font-family="monospace">one JSON action / turn:</text>
+  <text x="540" y="428" text-anchor="middle" font-size="11.5" fill="#e9d5ff" font-family="monospace">{"action":"deliver","args":{"item":"سيروم"}}</text>
+
+  <!-- action / observation arrows between brain and tools -->
+  <line x1="720" y1="250" x2="772" y2="250" stroke="#7c3aed" stroke-width="2.5" marker-end="url(#arrP)"/>
+  <text x="746" y="241" text-anchor="middle" font-size="11" font-weight="700" fill="#7c3aed">action</text>
+  <line x1="772" y1="392" x2="720" y2="392" stroke="#16a34a" stroke-width="2.5" marker-end="url(#arrG)"/>
+  <text x="746" y="384" text-anchor="middle" font-size="11" font-weight="700" fill="#16a34a">OBSERVATION</text>
+
+  <!-- ===== Col C: TOOLS / EFFECTORS ===== -->
+  <text x="1000" y="118" text-anchor="middle" font-size="13" font-weight="700" fill="#94a3b8" letter-spacing="1">ACTION SPACE — 4 TOOLS</text>
+
+  <!-- perceive -->
+  <rect x="772" y="150" width="468" height="78" rx="14" fill="#fff7ed" stroke="#f59e0b" stroke-width="2"/>
+  <text x="792" y="180" font-size="15" font-weight="700" fill="#92400e">perceive_scene()  →  Fanar-Oryx 👁️</text>
+  <text x="792" y="208" font-size="12.5" fill="#475569">reads product labels — what's on the table (+ where)</text>
+
+  <!-- deliver -->
+  <rect x="772" y="244" width="468" height="92" rx="14" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+  <text x="792" y="274" font-size="15" font-weight="700" fill="#166534">deliver(item)  →  SmolVLA · SO-100 🦾</text>
+  <text x="792" y="300" font-size="12.5" fill="#475569">localize → grasp → verify (torque+width) → retry</text>
+  <text x="792" y="320" font-size="12.5" fill="#475569">→ set down at the delivery zone</text>
+
+  <!-- say / ask -->
+  <rect x="772" y="352" width="468" height="84" rx="14" fill="#ecfeff" stroke="#06b6d4" stroke-width="2"/>
+  <text x="792" y="382" font-size="15" font-weight="700" fill="#155e75">say(text) · ask(text)  →  Aura TTS 🗣️</text>
+  <text x="792" y="408" font-size="12.5" fill="#475569">confirm in the user's dialect, or ask to</text>
+  <text x="792" y="426" font-size="12.5" fill="#475569">disambiguate &amp; wait (multi-turn)</text>
+
+  <!-- deliver -> arm (down to robot) -->
+  <line x1="1006" y1="336" x2="1006" y2="372" stroke="#16a34a" stroke-width="2" marker-end="url(#arrG)" opacity="0"/>
+
+  <!-- ===== bottom: loop + properties ===== -->
+  <rect x="360" y="486" width="880" height="234" rx="14" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="380" y="514" font-size="14" font-weight="700" fill="#0f172a">The loop, one request — “ناولني السيروم” (with two serums present)</text>
+  <text x="380" y="544" font-size="13" fill="#334155" font-family="monospace">USER  ناولني السيروم</text>
+  <text x="380" y="566" font-size="13" fill="#7c3aed" font-family="monospace">Fanar ▸ perceive_scene()</text>
+  <text x="380" y="588" font-size="13" fill="#16a34a" font-family="monospace">OBS   items: [سيروم الوجه, سيروم الشعر]</text>
+  <text x="380" y="610" font-size="13" fill="#7c3aed" font-family="monospace">Fanar ▸ ask("أي سيروم؟ الوجه أم الشعر؟")   ← waits for the user</text>
+  <text x="380" y="632" font-size="13" fill="#334155" font-family="monospace">USER  سيروم الشعر</text>
+  <text x="380" y="654" font-size="13" fill="#7c3aed" font-family="monospace">Fanar ▸ deliver("سيروم الشعر") ▸ say("تفضّل، سيروم الشعر أمامك") ▸ done</text>
+
+  <text x="380" y="690" font-size="12.5" fill="#475569">Grounds before acting · fails gracefully · disambiguates · multi-step · retries on safety-filter / errors</text>
+  <text x="380" y="709" font-size="12.5" fill="#64748b">State = the growing message list; Fanar emits one action, the tool result returns as OBSERVATION, repeat until “done”.</text>
+</svg>
