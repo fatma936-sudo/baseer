@@ -270,11 +270,8 @@ baseer/
 **Object-precise localization is future work.** We built Oryx-guided pre-positioning (a calibrated pixel→arm-pose map + top-down approach) to pick the *right* item out of several, but with a **single RGB camera and no depth** the aim is a few cm off — not reliable enough for the demo. The principled fix is a **depth camera or hand-eye IK calibration** (a verified SO-100 URDF + `RobotKinematics`); the hooks are in the repo (`backend/robot/calibrate_localization.py`, `BASEER_PREREACH=1`).
 
 ### Future Fanar improvements
-1. **Make tool-calling actually emit `tool_calls`** — the endpoint accepts `tools` but never returns calls, forcing a JSON-protocol workaround.
-2. **Reduce safety-filter false-positives** on benign Arabic; expose the trigger / a severity setting.
-3. **Aura ASR entity & diacritics robustness** — it fuses multi-word brands ("عطر ديور"→"عِطراديور") and over-diacritizes; both destabilize downstream parsing.
-4. **Clearer, higher per-capability rate limits + `Retry-After`** — one low shared quota across chat/ASR/TTS makes live demos hard.
-5. **Ship a Fanar-native VLA checkpoint** (on `Fanar-Oryx`) fine-tunable in LeRobot format, so teams build a *genuine* Fanar VLA.
+turn Fanar Oryx into a vision language action model. 
+
 
 ---
 
