@@ -86,7 +86,7 @@ GitHub: github.com/fatma936-sudo/baseer · Page: fatma936-sudo.github.io/baseer
 
 ## Agentic workflow  ·  *(30%)*
 
-![w:1080](agentic_workflow.png)
+![w:1080](react_framework.png)
 
 <!-- ReAct loop: Fanar emits ONE JSON action per turn (native tool-calling didn't work → JSON state machine). Grounds before acting, disambiguates, fails gracefully, multi-step, retries. -->
 

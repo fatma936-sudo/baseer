@@ -95,7 +95,9 @@ On a miss the controller opens, returns to a known pose, re-localizes and tries 
 
 ## 4. Agentic workflow (Fanar as a hierarchical VLA)
 
-The core is a **ReAct loop (Reason → Act → Observe)** with **tool use**, where **Fanar is the decision-maker** and Python is a thin executor — **no hardcoded `if/else` pipeline**.
+![ReAct framework of Fanar-C-2-27B](docs/react_framework.png)
+
+**Fanar-C is the central orchestrating agent.** The core is a **ReAct loop (Reason → Act → Observe)** with **tool use**, where **Fanar is the decision-maker** and Python is a thin executor — **no hardcoded `if/else` pipeline**. Oryx *observes* (perception), SmolVLA *acts* (the grasp), Aura *speaks* — all invoked by Fanar.
 
 ### Action space — four tools
 ```

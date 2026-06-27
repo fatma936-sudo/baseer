@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 520" font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <marker id="bk" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#111827"/>
+    </marker>
+  </defs>
+  <rect width="2000" height="520" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text x="1000" y="56" text-anchor="middle" font-size="36" font-weight="800" fill="#111827">ReAct Framework of Fanar-C-2-27B</text>
+
+  <!-- input: receives text speech -->
+  <text x="92" y="170" text-anchor="middle" font-size="17" font-weight="700" fill="#1f8fb0">Receives text</text>
+  <text x="92" y="190" text-anchor="middle" font-size="17" font-weight="700" fill="#1f8fb0">speech</text>
+  <polygon points="24,202 116,202 116,189 162,212 116,235 116,222 24,222" fill="#22c3dd"/>
+
+  <!-- horizontal connector arrows -->
+  <line x1="432" y1="212" x2="526" y2="212" stroke="#111827" stroke-width="3" marker-end="url(#bk)"/>
+  <line x1="792" y1="212" x2="886" y2="212" stroke="#111827" stroke-width="3" marker-end="url(#bk)"/>
+  <line x1="1152" y1="212" x2="1246" y2="212" stroke="#111827" stroke-width="3" marker-end="url(#bk)"/>
+  <line x1="1512" y1="212" x2="1606" y2="212" stroke="#111827" stroke-width="3" marker-end="url(#bk)"/>
+
+  <!-- Box 1: REASON grounds first (navy) -->
+  <rect x="172" y="162" width="260" height="100" rx="16" fill="#13234d"/>
+  <text x="302" y="206" text-anchor="middle" font-size="20" font-weight="800" fill="#ffffff">REASON: grounds</text>
+  <text x="302" y="232" text-anchor="middle" font-size="20" font-weight="800" fill="#ffffff">first</text>
+
+  <!-- Box 2: ACT perceive_scene (blue) -->
+  <rect x="532" y="162" width="260" height="100" rx="16" fill="#5b8def"/>
+  <text x="662" y="206" text-anchor="middle" font-size="20" font-weight="800" fill="#0f1f4b">ACT: perceive_</text>
+  <text x="662" y="232" text-anchor="middle" font-size="20" font-weight="800" fill="#0f1f4b">scene()</text>
+
+  <!-- Box 3: REASON present & unambiguous (navy) -->
+  <rect x="892" y="162" width="260" height="100" rx="16" fill="#13234d"/>
+  <text x="1022" y="206" text-anchor="middle" font-size="19" font-weight="800" fill="#ffffff">REASON: present</text>
+  <text x="1022" y="232" text-anchor="middle" font-size="19" font-weight="800" fill="#ffffff">&amp; unambiguous</text>
+
+  <!-- Box 4: ACT decides object (blue) -->
+  <rect x="1252" y="162" width="260" height="100" rx="16" fill="#5b8def"/>
+  <text x="1382" y="206" text-anchor="middle" font-size="19" font-weight="800" fill="#0f1f4b">ACT: Decides the</text>
+  <text x="1382" y="232" text-anchor="middle" font-size="19" font-weight="800" fill="#0f1f4b">object to deliver</text>
+
+  <!-- Box 5: ACT decides message (blue) -->
+  <rect x="1612" y="162" width="260" height="100" rx="16" fill="#5b8def"/>
+  <text x="1742" y="206" text-anchor="middle" font-size="19" font-weight="800" fill="#0f1f4b">ACT: Decided the</text>
+  <text x="1742" y="232" text-anchor="middle" font-size="19" font-weight="800" fill="#0f1f4b">message to send</text>
+
+  <!-- Oryx OBSERVES (teal) under box 2, feeds UP -->
+  <line x1="662" y1="378" x2="662" y2="266" stroke="#111827" stroke-width="3" marker-end="url(#bk)"/>
+  <text x="690" y="330" text-anchor="middle" font-size="15" font-weight="700" fill="#111827" transform="rotate(-90 690 330)">list of items</text>
+  <polygon points="574,382 794,382 772,462 552,462" fill="#4f9d91"/>
+  <text x="673" y="430" text-anchor="middle" font-size="19" font-weight="800" fill="#ffffff">Oryx OBSERVES</text>
+
+  <!-- SmolVLA performs action (purple) under box 4, fed DOWN -->
+  <line x1="1382" y1="266" x2="1382" y2="378" stroke="#111827" stroke-width="3" marker-end="url(#bk)"/>
+  <polygon points="1294,382 1514,382 1492,462 1272,462" fill="#8257e6"/>
+  <text x="1393" y="420" text-anchor="middle" font-size="19" font-weight="800" fill="#ffffff">SmolVLA</text>
+  <text x="1393" y="444" text-anchor="middle" font-size="19" font-weight="800" fill="#ffffff">performs action</text>
+
+  <!-- AURA TTS talks back (dark blue) under box 5, fed DOWN -->
+  <line x1="1742" y1="266" x2="1742" y2="378" stroke="#111827" stroke-width="3" marker-end="url(#bk)"/>
+  <polygon points="1654,382 1874,382 1852,462 1632,462" fill="#2b5aa6"/>
+  <text x="1753" y="420" text-anchor="middle" font-size="19" font-weight="800" fill="#ffffff">AURA TTS</text>
+  <text x="1753" y="444" text-anchor="middle" font-size="19" font-weight="800" fill="#ffffff">Talks back</text>
+</svg>
