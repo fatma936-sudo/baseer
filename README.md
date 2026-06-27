@@ -24,7 +24,7 @@ For a visually-impaired person, the hard part of daily life isn't *deciding* wha
 
 For an elderly, blind, Arabic-speaking user, neither works. The accessibility gap is **natural, dialectal Arabic** as the interface to a physical assistant — exactly what Fanar is built to close.
 
-**Use case (demo):** the arm sits on a **vanity / dressing table** and hands the user **skincare serums** (hair serum, face serum) on request. Audio is the user's **only** feedback channel. The intelligence (understanding dialect, deciding, refusing safely) is genuinely Fanar's; the design proves it by **failing gracefully** — which, for an assistive tool, *is* the product.
+**Use case (demo):** the arm sits on a **vanity / dressing table** and hands the user **skincare serums** (hair serum, face serum) on request. Audio is the user's **only** feedback channel. The intelligence (understanding dialect, deciding, refusing safely) is  Fanar's. As Fanar-C-2-27B acts as the full ReACT agent and is the system orchestrator. 
 
 ---
 
